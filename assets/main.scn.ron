@@ -1,0 +1,15 @@
+(
+	resources: {},
+	entities: {
+	 	0: (
+			components: {
+				"scenes::components::BuilderBlock": (
+					x: 0.,
+					y: -150.,
+					w: 300.,
+					h: 10.,
+				),
+			}
+	 	),
+	}
+)
