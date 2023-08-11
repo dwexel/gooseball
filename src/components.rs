@@ -15,10 +15,24 @@ pub struct BuilderBlock {
     pub h: f32,
 }
 
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource)]
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+
+// i don't need indi
+pub struct BuilderLine {
+    pub v: Vec<(f32, f32)>
+}
+
+
+
+//-------------------------------
+
+#[derive(Resource, PartialEq)]
 pub struct PlayerInfo {
-    pub players: u8
+    pub players: u8,
+    pub balls: bool,
+    pub camera_system: bool
 }
 
 
@@ -137,14 +151,52 @@ pub struct TimeAdded(pub f32);
 pub struct FromPlayer(pub Entity);
 
 
+#[derive(Component)]
+pub struct BallSensor {
+    pub hit_on_last_update: bool,
+    pub inside: bool
+}
+
+impl BallSensor {
+    pub fn new() -> Self {
+        Self {
+            hit_on_last_update: false,
+            inside: false
+        }
+    }
+}
+
+
+
+
+#[derive(Component)]
+pub struct CameraTarget;
+
+
 
 //-----------------------------------
+
+
+
+pub trait RemoveAfter {
+    // returns true if ready to remove
+    fn tick(&mut self, t: f32) -> bool;
+}
+
+
 
 
 #[derive(Component, Debug)]
 pub struct OneShot {
    pub position: f32,    
    pub length: f32,
+}
+
+impl RemoveAfter for OneShot {
+    fn tick(&mut self, t: f32) -> bool {
+        self.position += t;
+        self.position >= self.length
+    }
 }
 
 impl Default for OneShot {
@@ -159,10 +211,10 @@ impl OneShot {
 
 
 
-pub trait RemoveAfter {
-    // returns true if ready to remove
-    fn tick(&mut self, t: f32) -> bool;
-}
+
+
+
+
 
 #[derive(Component)]
 pub struct JumpTimer {
@@ -177,8 +229,15 @@ impl RemoveAfter for JumpTimer {
     }
 }
 
-impl Default for JumpTimer {
-	fn default() -> Self {
-		Self { position: 0.0, length: 1.0 }
-	}
+impl JumpTimer {
+    pub fn new(len: f32) -> Self {
+        Self {position: 0., length: len}
+    } 
 }
+
+// move out traitss?
+// pub trait ResetAfterUpdate {
+//     fn reset(&mut self);
+// }
+
+

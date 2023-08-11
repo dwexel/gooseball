@@ -1,15 +1,32 @@
 (
 	resources: {},
 	entities: {
-	 	0: (
-			components: {
-				"scenes::components::BuilderBlock": (
+	 	0: (components: {"scenes::components::BuilderBlock": (
 					x: 0.,
 					y: -150.,
-					w: 300.,
+					w: 600.,
 					h: 10.,
-				),
-			}
-	 	),
+		)}),
+	 	1: (components: {"scenes::components::BuilderBlock": (
+					x: -600.,
+					y: -200.,
+					w: 600.,
+					h: 10.,
+		)}),
+	 	2: (components: { "scenes::components::BuilderBlock": (
+					x: -600.,
+					y: -200.,
+					w: 100.,
+					h: 100.,
+		)}),
+		3: (components: { "scenes::components::BuilderLine": (
+					v: [
+						(200., -150.),
+						(400., -100.),
+						(600., 0.),
+						(700., 20.),
+						(800., 40.)
+					]
+		)})	
 	}
 )

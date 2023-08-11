@@ -3,6 +3,10 @@ use bevy_rapier2d::prelude::{RapierContext, QueryFilter, ExternalImpulse};
 use super::components::*;
 
 const JUMP_CHECK_HEIGHT: f32 = 80.0;
+const JUMP_IMPULSE: f32 = 200.;
+const JUMP_TIME: f32 = 2.;
+
+
 
 /*
 jump:
@@ -17,13 +21,16 @@ just don't want double jumps
 or if they touch back down.
 
 
+right now it takes about...
+
  */
 
 
-pub fn jump_query(
-	mut controlled: Query<
-		(Entity, &Transform, &InputHolder, &mut ExternalImpulse), 
-		(With<InputHolder>, Without<JumpTimer>)
+pub fn apply_jump_query(
+	mut controlled: 
+		Query<
+			(Entity, &Transform, &InputHolder, &mut ExternalImpulse), 
+			(With<InputHolder>, Without<JumpTimer>)
 		>,
 	rapier_context: Res<RapierContext>,
 	mut commands: Commands
@@ -43,18 +50,12 @@ pub fn jump_query(
 			// check if in jump heigt
 			if distance_to_floor < JUMP_CHECK_HEIGHT {
 
-
 				// apply jump
 				if input.jump {
 					// only insert new timer of old one is gone
-					commands.entity(e).insert(JumpTimer::default());
-
-					ext_impulse.impulse = Vec2::new(0., 100.);
-
+					commands.entity(e).insert(JumpTimer::new(JUMP_TIME));
+					ext_impulse.impulse = Vec2::new(0., JUMP_IMPULSE);
 				}
-
-
-
 			}
 		}
 	}

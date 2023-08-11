@@ -1,7 +1,5 @@
 /*
 
-
-
 sort components into areas:
 some components manage the entity's state (by their presence or abscense)
 
@@ -16,30 +14,37 @@ increase ball weight
 change paddle to dynamic?
 
 
-update systems depens on player1, player2 resources
-
-
-
-rapier pause processing?
-
-a "reset" state or maybe a reset event?
 
 idea:
 maybe combine pause/unpause keypress with menu-related keypresses
 abstract input sets......
 
 
-the player resources thing might be too complex
+todo:
+make ball sensor flash on hit
+
+
+figure out the swing thing
+maybe the ball only gets a hit for one frame?
+like it turns to a sensor after one frame or gets collision group removed?
+
+
+figure out font stuff
+
+
+todo:
+make ui show getting hit,
+like a counter
+
+
+ok now.
+balls systemesssj
 
 
  */
 
 
-use bevy::{transform::TransformSystem, ecs::query::QuerySingleError};
-#[allow(unused_parens)]
-
-
-
+use bevy::transform::TransformSystem;
 use bevy::{
     asset::ChangeWatcher, 
     prelude::*, 
@@ -56,6 +61,8 @@ use components::*;
 mod jump;
 mod balls;
 mod menu;
+mod builder;
+
 
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
@@ -99,13 +106,19 @@ fn main() {
             menu::setup_menu_system
         ))
 
-        .add_systems(Update, 
+        .add_systems(Update,
             (
                 bevy::window::close_on_esc,
 
+                zoom_2d,
+
+                // todo
+                camera_system.run_if(resource_equals(PlayerInfo {players: 2, balls: false, camera_system: true})),
+
                 // detect runtime scene changes
-                added_system,
-                changed_system,
+                builder::added_system,
+                builder::changed_system,
+
 
                 // todo ordering
                 get_input_wasd_system,
@@ -113,12 +126,12 @@ fn main() {
 
                 // apply movement
                 apply_input_system,
-                apply_movement_changes_system,
-                jump::jump_query,
+                apply_movement_to_paddles,
+                jump::apply_jump_query,
 
                 // update timers
-                update_animation_system,
                 update_remove_timers::<JumpTimer>,
+                update_remove_timers::<OneShot>,
 
                 balls::drop_ball,
                 balls::manage_balls,
@@ -128,6 +141,12 @@ fn main() {
             )
             .run_if(in_state(AppState::InGame))
         )
+        .add_systems(PostUpdate, 
+            (reset_updated_flags).run_if(in_state(AppState::InGame))
+        )
+
+
+
         // add physics setup
         .configure_sets(PostUpdate,
             (
@@ -173,13 +192,27 @@ fn main() {
 
         // types that are deserialized
         .register_type::<BuilderBlock>()
-        // hmmmmm
-        .register_type::<PlayerInfo>()
+        .register_type::<BuilderLine>()
+        .register_type::<Vec2>()
+        .register_type::<Vec<Vec2>>()
+
+        .register_type::<(f32, f32)>()
+        .register_type::<Vec<(f32, f32)>>()
+
+        // // hmmmmm
+        // todo
+        // .register_type::<PlayerInfo>()
+
+        .add_state::<AppState>()
+
+
         .insert_resource(BallTimer(Timer::from_seconds(BALL_TIME, TimerMode::Repeating)))
         .insert_resource(PlayerInfo {
             players: 2,
+            balls: false,
+            camera_system: false
         })
-        .add_state::<AppState>()
+        
         .run();
 }
 
@@ -189,13 +222,23 @@ fn main() {
 const SCENE_FILE_PATH: &str = "main.scn.ron";
 
 
-const ANIM_LENGTH: f32 = 3.0;
+
+const SWING_RIGHT: bool = true;
+const ANIM_LENGTH: f32 = 0.5;
 const PADDLE_DISTANCE: f32 = 100.;
+const DROP_HEIGHT: f32 = 200.;
 
-const ACC: f32 = 10.0;
+
+//
+const ACC: f32 = 20.0;
 const BALL_TIME: f32 = 2.0;
+const GRAVITY_SCALE: f32 = 6.0;
 
-const GRAVITY_SCALE: f32 = 2.0;
+
+
+
+
+
 
 
 // ------------------ setup
@@ -225,17 +268,29 @@ fn setup(
         }),
     );
 
+    // spawn ball sensor
+    // ball detector component?
+    commands.spawn((
+        // RigidBody::Fixed,
+        // ball sensor has to have a sensor
+        // bundle would make sense
+        BallSensor::new(),
+        Sensor,
+        ActiveEvents::COLLISION_EVENTS,
+
+
+        // incideental
+        Collider::ball(100.),
+        TransformBundle::from(Transform::from_xyz(100., 100., 0.)),
+    ));
 }
 
 fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_server: Res<AssetServer>) {
-    
     let icon_handle = asset_server.load("icon.png");
-
     let c1 = commands.spawn((
         PaddleMarker,
         RigidBody::KinematicPositionBased,
         Collider::cuboid(40.0, 10.0),
-        // TransformBundle::from(Transform::from_xyz(100.0, 100.0, 0.0)),
         TransformBundle::default(),
         // in group 2
         // collide with everything except group 1 
@@ -243,9 +298,10 @@ fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_ser
     )).id();
 
     // note: density, damping
-    let p1 = commands.spawn((
+    commands.spawn((
         Player1Marker,
         SingleChild(c1),
+        CameraTarget,
         SpriteBundle {
             texture: icon_handle.clone(),
             transform: Transform::from_xyz(0., -100., 100.),
@@ -266,8 +322,9 @@ fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_ser
         // p;ayers are in group 1
         CollisionGroups::new(Group::GROUP_1, (Group::ALL ^ Group::GROUP_2)),
         ExternalImpulse::default()
-    )).id();
 
+    ));
+    
     if info.players != 2 {
         return;
     }
@@ -276,7 +333,6 @@ fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_ser
         PaddleMarker,
         RigidBody::KinematicPositionBased,
         Collider::cuboid(40.0, 10.0),
-        // TransformBundle::from(Transform::from_xyz(100.0, 100.0, 0.0)),
         TransformBundle::default(),
         // in group 2
         // collide with everything except group 1 
@@ -286,6 +342,9 @@ fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_ser
     let p2 = commands.spawn((
         Player2Marker,
         SingleChild(c2),
+        CameraTarget,
+
+
         SpriteBundle {
             texture: icon_handle.clone(),
             transform: Transform::from_xyz(0., 100., 100.),
@@ -310,12 +369,11 @@ fn spawn_players_system(info: Res<PlayerInfo>, mut commands: Commands, asset_ser
 
 
 
-/* query all RigidBodies and despawn them, then set next state */
+/* query all RigidBodies and despawn them, then set gamestate back to in-game */
 fn reset_system (
     mut commands: Commands, 
     bodies: Query<Entity, With<RigidBody>>,
     mut next: ResMut<NextState<AppState>>
-
 ) {
     for entity in bodies.iter() {
         commands.entity(entity).despawn();
@@ -346,30 +404,85 @@ fn pause_menu_button_system(
     }
 }
 
-fn added_system(
-    query: Query<(Entity, &BuilderBlock), Added<BuilderBlock>>,
-    mut commands: Commands
+
+
+fn zoom_2d(
+    mut q: Query<&mut OrthographicProjection>,
+    keys: Res<Input<KeyCode>>,
+    time: Res<Time>,
 ) {
-    for (entity, b) in &query {
-        commands.entity(entity).insert((
-            TransformBundle::from(Transform::from_xyz(b.x, b.y, 0.)),
-            Collider::cuboid(b.w, b.h),
-        ));
+    let zoom_speed = 10.;
+    let mut projection = q.single_mut();
+    // zoom out
+    if keys.pressed(KeyCode::Minus) {
+        projection.scale += zoom_speed * time.delta_seconds();
     }
+    // zooom in
+    if keys.pressed(KeyCode::Equals) {
+        projection.scale -= zoom_speed * time.delta_seconds();
+    }
+
+    projection.scale = projection.scale.clamp(0.5, 5.0);
 }
 
-fn changed_system(
-    mut query: Query<(&BuilderBlock, &mut Transform, &mut Collider), Changed<BuilderBlock>>,
-) {
-    for (b, mut t, mut c) in query.iter_mut() {
-        println!("{} {}", b.x, b.y);
-        t.translation.x = b.x;
-        t.translation.y = b.y;
-        // todo
-        *c = Collider::cuboid(b.w, b.h);
-    }
-}
+fn camera_system(
+    mut gizmos: Gizmos,
+    mut q_camera: Query<(&mut Transform, &Camera, &mut OrthographicProjection)>,
+    q_targets: Query<&Transform, (With<CameraTarget>, Without<Camera>)>,
 
+) {
+    let (mut camera, c, mut projection) = q_camera.single_mut();
+
+    if let Ok(target) = q_targets.get_single() {
+        camera.translation = target.translation;
+        return;
+    }
+
+    // convert to vec2?
+    let sum: Vec3 = q_targets.iter().map(|t| &t.translation).sum();  
+    let count = q_targets.iter().count() as f32;
+
+    let centroid = Vec3::new(
+        sum.x / count,
+        sum.y / count,
+        0.
+    );
+
+    // set camera pos
+    camera.translation = centroid;
+
+    // in reference to the camera position,
+    // what components are we needing to loook at?
+    let start = Vec2::new(camera.translation.x, camera.translation.y);
+
+    // technically you should get the furthest 
+    // but i'll just get the first
+    let target = q_targets.iter().next().unwrap().translation;
+
+    // target is the vector from the camera to the target
+    let target = Vec2::new(target.x, target.y) - start;
+
+    // window is 800, 600
+    // pixels that is
+    // todo: update  so it's reactive
+    gizmos.rect_2d(Vec2::ZERO, 0., Vec2::new(800., 600.), Color::RED);
+
+    // so which edges of the screen are you closest to
+    // distance from x line,
+    // distance from y line
+    let close_to_x = (400. - target.x.abs()).abs();
+    let close_to_y = (300. - target.y.abs()).abs();
+
+    if close_to_x < close_to_y {
+        projection.scale = target.x.abs() / 400.;
+    }
+    else {
+        projection.scale = target.y.abs() / 400.;
+    }
+
+    projection.scale = projection.scale.max(0.7);
+    // todo: padding
+}
 
 
 
@@ -441,13 +554,11 @@ fn apply_input_system(
     mut players_query: Query<(&InputHolder, &SingleChild, &mut Velocity)>
 ) {
     for (input, child, mut velocity) in players_query.iter_mut() {
-
         // check input magnitude
         // length squared is faster
         if input.direction.length_squared() >= 0.01 {
             velocity.linvel += input.direction * ACC;
         }
-
         if input.swing {
             // use special child component
             // add oneshot entity
@@ -457,39 +568,45 @@ fn apply_input_system(
     }
 }
 
-const SWING_RIGHT: bool = false;
+
+
 
 
 // apply motion to paddles
-fn apply_movement_changes_system(
+fn apply_movement_to_paddles(
     mut paddles: Query<(&mut Transform, Option<&OneShot>), With<PaddleMarker>>,
     // p1_q: Query<(&SingleChild, &Transform), (With<Player1Marker>, Without<PaddleMarker>)>,
     // p2_q: Query<(&SingleChild, &Transform), (With<Player2Marker>, Without<PaddleMarker>)>,
     players: Query<(&SingleChild, &Transform), Without<PaddleMarker>>
 ) {
 
-
-
     for (child, p_transform) in players.iter() {
         if let Ok((mut c_transform, anim)) = paddles.get_mut(child.0) {
             let sign = match SWING_RIGHT { true => 1., false => -1.};
             let span = Vec3::new(sign * PADDLE_DISTANCE, 0., 0.);
-
             if let Some(a) = anim {
+                // define an arc as the range
+                let arc_width = PI / 2.;
+                let arc_start = PI / 4.;
+
+                // positive rotation = counterclockwise
+                // negitive rotation = clockwise
                 // animation starts and stops at a designated point
                 let theta = a.normalized();
-                let rot = Quat::from_rotation_z(sign * theta * 2. * PI);
+                
+                let rot = Quat::from_rotation_z((sign * theta * arc_width) + sign * arc_start);
                 c_transform.translation = p_transform.translation + (rot * span);
                 c_transform.rotation = rot;
                 
             }
-            else {    
+            else {
+                let easing_speed = 0.3;
+
                 // resting mode
                 let target = p_transform.translation + span;
                 let current = c_transform.translation;
-                c_transform.translation += (target - current) * 0.5;
+                c_transform.translation += (target - current) * easing_speed;
                 c_transform.rotation = Quat::IDENTITY;
-
             }
         }
     }
@@ -553,18 +670,6 @@ fn apply_movement_changes_system(
 }
 
 
-fn update_animation_system(
-    mut commands: Commands,
-    mut anim_query: Query<(Entity, &mut OneShot)>,
-    time: Res<Time>
-) {
-    for (entity, mut anim) in anim_query.iter_mut() {
-        anim.position += time.delta_seconds();
-        if anim.position >= anim.length {
-            commands.entity(entity).remove::<OneShot>();
-        }
-    }
-}
 
 
 fn update_remove_timers<T: RemoveAfter + Component>(
@@ -576,5 +681,14 @@ fn update_remove_timers<T: RemoveAfter + Component>(
         if timer.tick(time.delta_seconds()) {
             commands.entity(entity).remove::<T>();
         }
+    }
+}
+
+
+fn reset_updated_flags(
+    mut sensors_q: Query<&mut BallSensor>
+) {
+    for mut b in sensors_q.iter_mut() {
+        b.hit_on_last_update = false;
     }
 }
