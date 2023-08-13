@@ -1,10 +1,7 @@
-#[allow(non_camel_case_types)]
 
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
 
 
-// for serializing
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
@@ -18,13 +15,9 @@ pub struct BuilderBlock {
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-
-// i don't need indi
 pub struct BuilderLine {
     pub v: Vec<(f32, f32)>
 }
-
-
 
 //-------------------------------
 
@@ -32,79 +25,44 @@ pub struct BuilderLine {
 pub struct PlayerInfo {
     pub players: u8,
     pub balls: bool,
-    pub camera_system: bool
+    pub camera_system: bool,
+    pub show_log: bool
+}
+
+impl Default for PlayerInfo {
+    fn default() -> Self {
+        Self {
+            players: 2, 
+            balls: false,
+            camera_system: false, 
+            show_log: true
+        }
+    }
 }
 
 
-//-------------
 
-#[derive(Bundle)]
-pub struct PlayerBundle {
-    pub single_child: SingleChild,
-    
-    // sprite bundle
-    pub sprite: Sprite,
-    pub transform: Transform,
-    pub global_transform: GlobalTransform,
-    pub texture: Handle<Image>,
-    /// User indication of whether an entity is visible
-    pub visibility: Visibility,
-    /// Algorithmically-computed indication of whether an entity is visible and should be extracted for rendering
-    pub computed_visibility: ComputedVisibility,
-
-
-    // can't put in inputmethod righ tnow
-    pub input_holder: InputHolder,
-
-    // physics 
-    velocity: Velocity,
-    rigid_body: RigidBody,
-    collider: Collider,
-    gravity_scale: GravityScale,
-    restitution: Restitution,
-    locked_axes: LockedAxes,
-    collision_groups: CollisionGroups,
-    external_impulse: ExternalImpulse
-
-}
-
-#[derive(Bundle)]
-pub struct PaddleBundle {
-
-    paddle_marker: PaddleMarker,
-
-    // transform bundle
-    /// The transform of the entity.
-    pub local: Transform,
-    /// The global transform of the entity.
-    pub global: GlobalTransform,
-    
-    // physics
-    rigid_body: RigidBody,
-    collider: Collider,
-    collision_groups: CollisionGroups
-}
-
-#[derive(Bundle)]
-pub struct BallBundle {}
-
-
-//-----------------------------
+// -----------------
 
 
 
-
-
-// #[derive(Resource)]
-// pub struct PlayerInfo {
-//     pub players: u8
+// #[derive(Component)]
+// pub enum InputMethod {
+//     WASD,
+//     ARROW
 // }
 
+
+
+#[allow(non_camel_case_types)]
 #[derive(Component)]
 pub struct InputMethod_wasd;
 
+#[allow(non_camel_case_types)]
 #[derive(Component)]
 pub struct InputMethod_arrow;
+
+
 
 
 
@@ -117,7 +75,8 @@ pub struct InputHolder {
 }
 
 
-#[derive(Component)]
+
+#[derive(Component, Default)]
 pub struct PaddleMarker;
 
 #[derive(Component)]
@@ -133,15 +92,16 @@ pub struct Player2Marker;
 
 
 
-#[derive(Resource)]
-pub struct Player1(pub Entity);
-
-#[derive(Resource)]
-pub struct Player2(pub Entity);
 
 
 #[derive(Resource)]
 pub struct BallTimer(pub Timer);
+
+#[derive(Resource)]
+pub struct ThrowTimer(pub Timer);
+
+
+
 
 #[derive(Component)]
 pub struct TimeAdded(pub f32);
@@ -151,25 +111,16 @@ pub struct TimeAdded(pub f32);
 pub struct FromPlayer(pub Entity);
 
 
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct BallSensor {
     pub hit_on_last_update: bool,
     pub inside: bool
 }
 
-impl BallSensor {
-    pub fn new() -> Self {
-        Self {
-            hit_on_last_update: false,
-            inside: false
-        }
-    }
-}
 
 
 
-
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct CameraTarget;
 
 
@@ -209,13 +160,6 @@ impl OneShot {
    pub fn normalized(&self) -> f32 { self.position / self.length }
 }
 
-
-
-
-
-
-
-
 #[derive(Component)]
 pub struct JumpTimer {
     pub position: f32,
@@ -235,9 +179,21 @@ impl JumpTimer {
     } 
 }
 
-// move out traitss?
-// pub trait ResetAfterUpdate {
-//     fn reset(&mut self);
-// }
+//------------
 
+#[derive(Resource)]
+pub struct LogText(pub Vec<String>);
+
+#[derive(Component)]
+pub struct LogTextDisplayer;
+
+
+
+#[derive(Event)]
+pub struct LogEvent(pub String);
+
+
+
+#[derive(Component)]
+pub struct MenuMarker;
 

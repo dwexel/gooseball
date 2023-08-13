@@ -2,9 +2,12 @@ use bevy::prelude::*;
 use bevy_rapier2d::prelude::{RapierContext, QueryFilter, ExternalImpulse};
 use super::components::*;
 
-const JUMP_CHECK_HEIGHT: f32 = 80.0;
-const JUMP_IMPULSE: f32 = 200.;
-const JUMP_TIME: f32 = 2.;
+use super::{
+	JUMP_CHECK_HEIGHT,
+	JUMP_IMPULSE,
+	JUMP_TIME
+};
+
 
 
 

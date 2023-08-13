@@ -1,17 +1,8 @@
 /*
-convertt to vec...
 
-
-could have font reources in here
-
-could put "drop ball" options in the existing options struct
-
-
-
-
-
-is there a way to spawn a bunch of similar entities without using a bundle?
-
+idea:
+a system that takes a component as a generic
+and "shows" or "hides" all entities with that component
 
 
  */
@@ -21,6 +12,8 @@ use bevy::prelude::*;
 use crate::AppState;
 
 use super::components::*;
+
+
 
 
 
@@ -41,14 +34,15 @@ pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>)
 	let text_style = TextStyle {font_size: 20., font: asset_server.get_handle("fonts/FiraMono-Regular.ttf"), color: Color::WHITE};
 	
 	
-	commands.spawn(
+	commands.spawn((
+		MenuMarker,
 		NodeBundle { 
 			style: Style { flex_direction: FlexDirection::Column, flex_basis: Val::Percent(30.), align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() },
 			visibility: Visibility::Hidden,
 			background_color: BackgroundColor(Color::MIDNIGHT_BLUE),
 			..default()
 		}
-	)
+	))
 	.with_children(|parent| {
 		parent.spawn((
 			TextBundle { text: Text::from_section("set 1 player", text_style.clone()), ..default()},
@@ -59,13 +53,12 @@ pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>)
 		parent.spawn((
 			TextBundle { text: Text::from_section("balls (off)", text_style.clone()), ..default()},
 		));
+		parent.spawn((
+			TextBundle { text: Text::from_section("log (hiding)", text_style.clone()), ..default()},
+		));
 	});
 }
 
-
-const MENU_SIZE: usize = 3;
-
-// mod arith
 
 pub fn run_menu_system(
 	keys: Res<Input<KeyCode>>,
@@ -74,7 +67,12 @@ pub fn run_menu_system(
 
 	//
 	mut next: ResMut<NextState<AppState>>,
-	mut player_options: ResMut<PlayerInfo>
+	mut player_options: ResMut<PlayerInfo>,
+
+
+	//
+	mut display: Query<&mut Visibility, With<LogTextDisplayer>>
+
 ) {
 
 	// // store refs?
@@ -94,8 +92,6 @@ pub fn run_menu_system(
 		if *menu_pointer == ents.len() { *menu_pointer = 0 }
 	}
 
-
-
 	// unordered iteration
 	for (_, mut t) in menu_query.iter_mut() {
 		while t.sections.len() > 1 {
@@ -112,12 +108,11 @@ pub fn run_menu_system(
 		// bevy approved way
 		let (_, mut t) = menu_query.get_mut(*e).unwrap();
 
-		// modify text
 		t.sections.push(TextSection { 
-			value: "*".into(), ..default() 
+			value: "*".into(), 
+			style: TextStyle {font_size: 14., ..default()}
 		});
 
-		// functionalize this yayayayay
 		if keys.any_just_pressed([KeyCode::F, KeyCode::M]) {
 			match *menu_pointer {
 				0 => {
@@ -128,15 +123,33 @@ pub fn run_menu_system(
 					next.set(AppState::Reset);
 				},
 				2 => {
-					// t.sections[0].value = ""
 					player_options.balls = !player_options.balls;
-					
 					t.sections[0].value = match player_options.balls {
 						true => "balls (on)".to_string(),
 						false => "balls (off)".to_string()
 					}
-
 				},
+				3 => {
+					player_options.show_log = !player_options.show_log;
+
+					t.sections[0].value = match player_options.show_log {
+						true => {
+							for mut v in display.iter_mut() {
+								*v = Visibility::Visible
+							}
+							"log (showing)".to_string()
+						},
+						false => {
+							for mut v in display.iter_mut() {
+								*v = Visibility::Hidden
+							}
+							"log (hiding)".to_string()
+						}
+					}
+
+					// show it
+					
+				}
 				_ => {}
 			}
 		}
@@ -146,8 +159,12 @@ pub fn run_menu_system(
 
 
 // changes all hidden nodes to visibile
-pub fn show_menu(mut q: Query<&mut Visibility>) {
+// menu parent is set to be hidden so...
+
+pub fn show_menu(mut q: Query<&mut Visibility, With<MenuMarker>>) {
 	for mut visibility in q.iter_mut() {
+		println!("{:?}", visibility);
+
 		if *visibility == Visibility::Hidden {
 			*visibility = Visibility::Visible;
 		}
@@ -155,7 +172,7 @@ pub fn show_menu(mut q: Query<&mut Visibility>) {
 }
 
 // changes all visible nodes to hidden
-pub fn hide_menu(mut q: Query<&mut Visibility>) {
+pub fn hide_menu(mut q: Query<&mut Visibility, With<MenuMarker>>) {
 	for mut visibility in q.iter_mut() {
 		if *visibility == Visibility::Visible {
 			*visibility = Visibility::Hidden;
