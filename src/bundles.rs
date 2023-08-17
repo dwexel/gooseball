@@ -1,6 +1,13 @@
 /*
 can you set global gravity with rapier?
 
+
+note:
+some player components still have to be inserted manually ...
+
+does player need "external impulse" compnent?
+
+
  */
 
 
@@ -22,103 +29,82 @@ use crate::GRAVITY_SCALE;
 
 #[derive(Bundle)]
 pub struct PlayerBundle {
-    // insert
-    // pub single_child: SingleChild,
-    
     // sprite bundle
     pub sprite: Sprite,
     pub transform: Transform,
     pub global_transform: GlobalTransform,
     pub texture: Handle<Image>,
-    /// User indication of whether an entity is visible
     pub visibility: Visibility,
-    /// Algorithmically-computed indication of whether an entity is visible and should be extracted for rendering
     pub computed_visibility: ComputedVisibility,
 
-    // cam
+    // mine
     pub camera_target: CameraTarget,
-
-    // can't put in inputmethod righ tnow
     pub input_holder: InputHolder,
 
     // physics 
     pub velocity: Velocity,
     pub rigid_body: RigidBody,
+    pub character_controller: KinematicCharacterController,
     pub collider: Collider,
-    pub gravity_scale: GravityScale,
-    pub restitution: Restitution,
     pub locked_axes: LockedAxes,
     pub collision_groups: CollisionGroups,
-    pub external_impulse: ExternalImpulse,
-    // pub active_events: ActiveEvents,
 
-    //
+    // mine
     pub ball_sensor: BallSensor,
 
     // audiobundle
     pub source: Handle<AudioSource>,
     pub settings: PlaybackSettings,
 
+    // mine
     pub drop_rate: DropOnMeRate,
-
-
 }
 
 #[allow(unused_parens)]
 impl Default for PlayerBundle {
     fn default() -> Self {
         Self {
-            //
             sprite: default(),
             transform: default(),
             global_transform: default(),
             texture: DEFAULT_IMAGE_HANDLE.typed(),
             visibility: default(),
             computed_visibility: default(),
-            //
             camera_target: default(),
             input_holder: default(),
-            //
             velocity: default(),
-            rigid_body: RigidBody::Dynamic,
-            // collider: Collider::ball(50.),
-            // collider: Collider::cuboid(50., 50.),
+            rigid_body: RigidBody::KinematicVelocityBased,
+            character_controller: KinematicCharacterController {
+                offset: CharacterLength::Absolute(0.1),
+                ..default()
+            },
+
+
             collider: Collider::capsule_y(30., 20.),
-            gravity_scale: GravityScale(GRAVITY_SCALE),
-            restitution: default(),
             locked_axes: LockedAxes::ROTATION_LOCKED,
-            // collision_groups: CollisionGroups::new(Group::GROUP_1, (Group::ALL ^ Group::GROUP_2)),
-            // active_events: ActiveEvents::COLLISION_EVENTS,
-            /* collide with everything */
             collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL),
-            external_impulse: default(),
+
             ball_sensor: default(),
-            //
+
             source: default(),
             settings: PlaybackSettings { 
                 mode: PlaybackMode::Loop, volume: Volume::new_relative(0.5), speed: 1.0, paused: false 
             },
-
-            //
             drop_rate: DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
         }
     }
 }
 
-// so balls can hit players and balls can hit 
-
 
 
 #[derive(Bundle)]
 pub struct BallBundle {
-	// from_player: FromPlayer,
-	// time_added: TimeAdded,
-
 	/* physics */
 	pub rigid_body: RigidBody,
 	pub collider: Collider,
     pub collision_groups: CollisionGroups,
 
+    // mine
 	pub gravity_scale: GravityScale,
 	pub mass_props: ColliderMassProperties,
 	pub restitution: Restitution,
@@ -132,16 +118,12 @@ pub struct BallBundle {
 
 }
 
-// set mass props?
-// like density?
 
 impl Default for BallBundle {
 	fn default() -> Self {
-		 Self {
-			rigid_body: RigidBody::Dynamic,
+		Self {
+		    rigid_body: RigidBody::Dynamic,
 			collider: Collider::ball(20.),
-            /* in group 1, collide with everything except group 2 */
-            // collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL ^ Group::GROUP_2),
             collision_groups: CollisionGroups::new(Group::GROUP_2, Group::ALL ^ Group::GROUP_3),
 			gravity_scale: GravityScale(GRAVITY_SCALE),
 			mass_props: default(),
@@ -151,7 +133,7 @@ impl Default for BallBundle {
 			velocity: default(),
 			transform: default(),
 			global_transform: default()
-		 }
+		}
 	}
 }
 

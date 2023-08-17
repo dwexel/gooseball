@@ -57,6 +57,13 @@ maybe, don't need up side for now ...
 but i should try it later
 
 
+
+ok "balls" isn't a good subject for a separate file
+
+a better way to separate code owuld be by subject and schedule, like "player updates"
+
+
+
  */
 
 
@@ -67,11 +74,12 @@ use bevy::{
     prelude::*, 
     utils::Duration, 
 };
-use bevy_rapier2d::prelude::*;
+use bevy_rapier2d::prelude::{*, QueryFilter};
 
 
 
 mod components;
+// use bevy_rapier2d::rapier::prelude::QueryFilter;
 use bundles::PlayerSensorBundle;
 use components::*;
 
@@ -135,7 +143,7 @@ fn main() {
                 .in_set(CollectInput),
 
                 (   
-                    (apply_input_system, apply_swing).chain()
+                    (apply_input_system, apply_swing).chain(),
                 )
                 .in_set(ApplyInput),
                 
@@ -144,6 +152,8 @@ fn main() {
                 )
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
+                modify_character_controller_slopes,
+                
 
 
                 // for now
@@ -205,7 +215,8 @@ fn main() {
             (
                 reset_system, 
                 spawn_players_system
-            ).chain()
+            )
+            .chain()
         )
 
         // types that are deserialized
@@ -218,22 +229,14 @@ fn main() {
         .register_type::<Vec<(f32, f32)>>()
 
         .add_state::<AppState>()
-        
+
         .insert_resource(ThrowTimer(Timer::from_seconds(3., TimerMode::Repeating)))
         .insert_resource(BallTimer(Timer::from_seconds(BALL_TIME, TimerMode::Repeating)))
-        // .init_resource::<PlayerInfo>()
-
-
-        .insert_resource(LogText(
-            vec!["try me!".to_string()]
-        ))
-        
+        .insert_resource(LogText(Vec::new()))
         .insert_resource(Settings_players(2))
         .insert_resource(Settings_balls(true))
         .insert_resource(Settings_log(true))
-
         .add_event::<LogEvent>()
-
         .run();
 }
 
@@ -248,20 +251,14 @@ pub enum AppState {
 }
 
 const SCENE_FILE_PATH: &str = "main.scn.ron";
-const BALL_SIZE: f32 = 20.;
-
+// const BALL_SIZE: f32 = 20.;
 // const SWING_RIGHT: bool = true;
 // const ANIM_LENGTH: f32 = 0.5;
 // const PADDLE_DISTANCE: f32 = 100.;
-
 const DROP_HEIGHT: f32 = 200.;
-
-
-const ACC: f32 = 16.;
+// const ACC: f32 = 16.;
 const BALL_TIME: f32 = 2.;
-// wacko
 const GRAVITY_SCALE: f32 = 5.;
-
 const JUMP_IMPULSE: f32 = 100.;
 
 
@@ -329,26 +326,28 @@ fn spawn_players_system(
     settings: Res<Settings_players>, 
     asset_server: Res<AssetServer>
 ) {
-    
     let icon_handle = asset_server.load("goose2.png");
 
     commands.spawn(
         bundles::PlayerBundle {
             source: asset_server.load("Windless Slopes.ogg"),
             texture: icon_handle.clone(),
-            transform: Transform::from_xyz(0., -100., 0.),
+            transform: Transform::from_xyz(0., 0., 0.),
             ..default()
         }
     )
     .insert(InputMapWASD)
-    .insert(Player1Marker);
+    .insert(Player1Marker)
+    .insert(CharacterVelocity(Vec2::ZERO));
+
+    
 
     if settings.0 != 2 {return}
 
     commands.spawn(
         bundles::PlayerBundle {
             texture: icon_handle.clone(),
-            transform: Transform::from_xyz(100., -100., 0.),
+            transform: Transform::from_xyz(100., 0., 0.),
             ..default()
         }
     )
@@ -475,73 +474,6 @@ fn get_input<T: Component + InputMap>(
     }
 }
 
-fn get_input_wasd_system(
-    mut players_query: Query<&mut InputHolder, With<InputMethod_wasd>>,
-    keys: Res<Input<KeyCode>>
-) {
-    // let k = *keys;
-
-    let mut h = InputHolder { direction: Vec2::ZERO, jump: false, swing: false };
-
-    if keys.pressed(KeyCode::D) {
-        h.direction.x += 1.;
-    }
-    if keys.pressed(KeyCode::W) {
-        h.direction.y += 1.;
-    }
-    if keys.pressed(KeyCode::A) {
-        h.direction.x -= 1.;
-    }
-    if keys.pressed(KeyCode::S) {
-        h.direction.y -= 1.;
-    }
-
-    if keys.just_pressed(KeyCode::F) {
-        h.jump = true;
-    }
-    if keys.just_pressed(KeyCode::G) {
-        h.swing = true;
-    }
-
-    h.direction = h.direction.normalize_or_zero();
-    
-    for mut holder in players_query.iter_mut() {
-        *holder = h.clone();
-    }
-}
-
-fn get_input_arrow_system(
-    mut players_query: Query<&mut InputHolder, With<InputMethod_arrow>>,
-    keys: Res<Input<KeyCode>>
-) {
-    let mut h = InputHolder { direction: Vec2::ZERO, jump: false, swing: false };
-
-    if keys.pressed(KeyCode::Right) {
-        h.direction.x += 1.;
-    }
-    if keys.pressed(KeyCode::Up) {
-        h.direction.y += 1.;
-    }
-    if keys.pressed(KeyCode::Left) {
-        h.direction.x -= 1.;
-    }
-    if keys.pressed(KeyCode::Down) {
-        h.direction.y -= 1.;
-    }
-
-    if keys.just_pressed(KeyCode::Up) {
-        h.jump = true;
-    }
-    if keys.just_pressed(KeyCode::M) {
-        h.swing = true;
-    }
-
-    h.direction = h.direction.normalize_or_zero();
-    
-    for mut holder in players_query.iter_mut() {
-        *holder = h.clone();
-    }
-}
 
 #[derive(Clone, Copy, Component, Debug, PartialEq)]
 enum Direction {
@@ -604,36 +536,34 @@ normalize_or_zero
  */
 
 
+#[derive(Component)]
+struct CharacterVelocity(Vec2);
+
+
+
+
 fn apply_input_system(
     time: Res<Time>,
     mut commands: Commands,
     mut players_q: Query<(
         Entity, 
-        &InputHolder, 
-        &mut Velocity,
+        &InputHolder,
+        
         Option<&mut OneShot>,
-        &mut ExternalImpulse, 
-        &Transform
+        &mut KinematicCharacterController,
+        &Transform,
+        &mut CharacterVelocity
+
     )>,
     rapier_context: Res<RapierContext>
 ) {
-    for (entity, input, mut velocity, o, mut ext, transform) in players_q.iter_mut() {
-        let horz = Vec2::new(input.direction.x, 0.);
+    for (entity, input, o, mut controller, transform, mut c_vel) in players_q.iter_mut() {
+        let grav = -0.2;
 
-        /* apply acceleration or damping */
+        c_vel.0.y += grav;
+        c_vel.0.y = c_vel.0.y.clamp(-10., 10.);
 
-        if horz.length_squared() >= 0.01 {
-            // velocity.linvel += horz * ACC;
-            velocity.linvel += horz * 22.;
-        }
-        else if velocity.linvel.x != 0. {
-            let sign = velocity.linvel.x.signum();
-            velocity.linvel.x -= 10. * sign;
-            if velocity.linvel.x.signum() != sign {
-                velocity.linvel.x = 0.;
-            }
-        }
-
+        
         /* can't start a new swing until the next frame huh */
 
         if let Some(mut oneshot) = o {
@@ -652,24 +582,39 @@ fn apply_input_system(
             }
         }
 
+        /* raycast to ground */
+
         if input.jump {
-            let ray_origin = transform.translation.xy();
-            let ray_dir = Vec2::new(0., -1.);
-            let max_toi = 100.;
-            let solid = false;
-            /* only query fixed rigidbodies and colliders with no body */
-            let filter = QueryFilter::only_fixed();
-            if let Some((_entity, toi)) = rapier_context.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
-                let distance_to_floor = (ray_dir * toi).y.abs();
-                let player_height = 50.;
-                if distance_to_floor < player_height + 10. {
-                    ext.impulse = Vec2::new(0., JUMP_IMPULSE);
-                }
+            if let Some((_entity, toi)) = rapier_context.cast_ray(
+                transform.translation.xy(), 
+                Vec2::new(0., -1.), 
+                60., 
+                false, 
+                QueryFilter::only_fixed()
+            ) {
+                c_vel.0.y = 10.;
             }
         }
+
+        /* apply velocity to translation */
+        controller.translation = Some(Vec2::new(
+            input.direction.x,
+            c_vel.0.y
+        ));
     }
 }
 
+/* Read the character controller collisions stored in the character controller’s output. */
+fn modify_character_controller_slopes(mut outputs: Query<(&KinematicCharacterControllerOutput, &mut CharacterVelocity)>) {
+    /* apply translation back to velocity */
+
+    for (output, mut vel) in outputs.iter_mut() {
+        println!("{}", output.grounded);
+        if output.grounded {
+            vel.0.y = 0.;
+        }
+    }
+}
 
 
 
@@ -774,10 +719,8 @@ fn update_log_system(
 
     if !log.is_empty() {
         for l in log.iter() {
-
             // have to clone?
             let message = l.0.clone();
-
             text.sections.push(
                 TextSection::new(
                     message,
@@ -787,10 +730,7 @@ fn update_log_system(
                 )
             );
         }
-        // log.clear();
-        
         let len = text.sections.len();
-
         if len > 9 {
             text.sections.drain(0..(len - 9));
         }
@@ -800,67 +740,41 @@ fn update_log_system(
 
 fn update_sensors(
     mut collision_events: EventReader<CollisionEvent>,
+
     mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
-    
     player_sensors: Query<(&PlayerSensor, Entity)>,
+
     balls: Query<&FromPlayer>,
- 
+    players: Query<&InputHolder>,
+
+
     mut log: EventWriter<LogEvent>,
-    mut commands: Commands
+    // mut commands: Commands
  ) {
     for collision_event in collision_events.iter() {
   
-        if let CollisionEvent::Started(e1, e2, _flags) = *collision_event {
- 
-            if let Ok((mut sensor, _)) = ball_sensors.get_mut(e1) {
-                sensor.hit_on_last_update = true;
- 
-                // log.send(LogEvent(format!(
-                // 	"ball sensor: {e1:?}\n"
-                // )));
- 
- 
- 
-                 // unstable
-                 let ball = balls.get(e2).unwrap();
-                 log.send(LogEvent(format!("ball sensor: {:?} from: {:?}\n", e1, ball.0)));
- 
-             }
-             else if let Ok((mut sensor, _)) = ball_sensors.get_mut(e2) {
-                 sensor.hit_on_last_update = true;
- 
-                 // log.send(LogEvent(format!(
-                 // 	"ball sensor: {e1:?}\n"
-                 // )));
- 
-                 // unstable
-                 let ball = balls.get(e1).unwrap();
-                 log.send(LogEvent(format!("ball sensor: {:?} from: {:?}\n", e2, ball.0)));
-             }
- 
-            if let Ok((sensor, sensor_e)) = player_sensors.get(e1) {
-                log.send(LogEvent(format!("player sensor was hit: {e1:?}\n")));
-                if sensor.despawn_on_enter {
-                    commands.entity(sensor_e).despawn();
+        if let CollisionEvent::Started(entity_1, entity_2, _flags) = *collision_event {
+
+            // for each entity
+            for (entity, other_entity) in [(entity_1, entity_2), (entity_2, entity_1)] {
+                // check if is sensor first, then if other is required type 
+                if let Ok((mut sensor, _)) = ball_sensors.get_mut(entity) {
+                    if let Ok(_from_player) = balls.get(other_entity) {
+
+                        // ball hit
+                        sensor.hit_on_last_update = true;
+                        log.send(
+                            LogEvent(format!("ball sensor: {:?} hit from: {:?}\n", entity, other_entity))
+                        );
+
+                    }
+                }
+                else if let Ok((_sensor, sensor_e)) = player_sensors.get(entity) {
+                    if let Ok(_) = players.get(other_entity) {
+                        
+                    }
                 }
             }
-            else if let Ok((sensor, sensor_e)) = player_sensors.get(e2) {
-                log.send(LogEvent(format!("player sensor was hit: {e2:?}\n")));
-                if sensor.despawn_on_enter {
-                    commands.entity(sensor_e).despawn();
-                }
-            }
- 
- 
-             // use bitwise?
-             // if flags == CollisionEventFlags::SENSOR {
-             // 	if let Ok((mut b, _)) = sensors.get_mut(e1) {
-             // 		b.hit_on_last_update = true;
-             // 	}
-             // 	else if let Ok((mut b, _)) = sensors.get_mut(e2) {
-             // 		b.hit_on_last_update = true;
-             // 	}
-             // }
          }
      }
  }

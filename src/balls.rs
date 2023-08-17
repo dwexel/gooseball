@@ -25,20 +25,13 @@ becuse they're the onees causing the collisions
  */
 
 
-use std::time::Duration;
 
-use bevy::math::Vec3Swizzles;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
-// use bevy_rapier2d::rapier::prelude::CollisionEventFlags;
-
 use super::components::*;
 use super::bundles::BallBundle;
 
 use super::{
 	DROP_HEIGHT
-	// GRAVITY_SCALE,
-	// BALL_SIZE
 };
 
 
@@ -75,6 +68,7 @@ const TOTAL_BALLS: usize = 2;
 // 		}
 // 	}
 // }
+
 
 pub fn drop_ball(
 	mut commands: Commands, 
@@ -115,8 +109,7 @@ pub fn drop_ball(
 
 pub fn manage_timers(mut q: Query<&mut DropOnMeRate>, time: Res<Time>) {
 	let t = time.elapsed_seconds() / 60.;
-	println!("{t}");
-	
+	// println!("{t}");
 
 }
 
