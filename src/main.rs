@@ -68,7 +68,7 @@ a better way to separate code owuld be by subject and schedule, like "player upd
 
 
 use bevy::math::Vec3Swizzles;
-use bevy::transform::{TransformSystem, self};
+use bevy::transform::TransformSystem;
 use bevy::{
     asset::ChangeWatcher, 
     prelude::*, 
@@ -79,11 +79,9 @@ use bevy_rapier2d::prelude::{*, QueryFilter};
 
 
 mod components;
-// use bevy_rapier2d::rapier::prelude::QueryFilter;
 use bundles::PlayerSensorBundle;
 use components::*;
 
-// mod jump;
 mod balls;
 mod menu;
 mod builder;
@@ -133,12 +131,9 @@ fn main() {
                 // update camera
                 camera::camera_system,
 
-                
-                (
+            (
                     get_input::<InputMapArrow>,
                     get_input::<InputMapWASD>
-                    // get_input_wasd_system,
-                    // get_input_arrow_system
                 )
                 .in_set(CollectInput),
 
@@ -153,16 +148,9 @@ fn main() {
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
                 modify_character_controller_slopes,
-                
-
-
-                // for now
-                // balls::ball_thrower,
                 balls::manage_balls,
-                
                 // update components that need to detect collisions
                 update_sensors,
-
                 pause_menu_button_system,
                 update_log_system,
                 update_sound_speed
@@ -173,7 +161,6 @@ fn main() {
         .add_systems(PostUpdate,    
             (
                 update_remove_timers::<JumpTimer>,
-                // update_remove_timers::<OneShot>,
                 reset_updated_flags.run_if(in_state(AppState::InGame))
             )
         )
@@ -609,7 +596,6 @@ fn modify_character_controller_slopes(mut outputs: Query<(&KinematicCharacterCon
     /* apply translation back to velocity */
 
     for (output, mut vel) in outputs.iter_mut() {
-        println!("{}", output.grounded);
         if output.grounded {
             vel.0.y = 0.;
         }
