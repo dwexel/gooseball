@@ -40,6 +40,18 @@ impl Default for PlayerInfo {
     }
 }
 
+#[derive(Resource, PartialEq)]
+pub struct Settings_balls (pub bool);
+
+
+
+#[derive(Resource, PartialEq)]
+pub struct Settings_players (pub u8);
+
+#[derive(Resource, PartialEq)]
+pub struct Settings_log (pub bool);
+
+
 
 
 // -----------------
@@ -75,20 +87,18 @@ pub struct InputHolder {
 }
 
 
-
-#[derive(Component, Default)]
-pub struct PaddleMarker;
-
-#[derive(Component)]
-pub struct SingleChild(pub Entity);
+//------------------------------------------------------
 
 
 #[derive(Component)]
 pub struct Player1Marker;
 
-
 #[derive(Component)]
 pub struct Player2Marker;
+
+
+#[derive(Component)]
+pub struct DropOnMeRate(pub Timer);
 
 
 
@@ -101,14 +111,20 @@ pub struct BallTimer(pub Timer);
 pub struct ThrowTimer(pub Timer);
 
 
-
+//------------------
 
 #[derive(Component)]
 pub struct TimeAdded(pub f32);
 
-
 #[derive(Component)]
 pub struct FromPlayer(pub Entity);
+
+
+// is true if the entity has ever hit the ground
+#[derive(Component)]
+pub struct HasHitGround(pub bool);
+
+
 
 
 #[derive(Component, Default)]
@@ -116,6 +132,16 @@ pub struct BallSensor {
     pub hit_on_last_update: bool,
     pub inside: bool
 }
+
+
+#[derive(Component, Default)]
+pub struct PlayerSensor {
+    // pub hit_on_last_update: bool,
+    pub despawn_on_enter: bool
+}
+
+
+
 
 
 
@@ -128,6 +154,21 @@ pub struct CameraTarget;
 //-----------------------------------
 
 
+#[derive(Component)]
+pub struct OneShot(pub Timer);
+
+impl OneShot {
+    pub fn from_seconds(duration: f32) -> Self {
+        Self(Timer::from_seconds(duration, TimerMode::Once))
+    }
+}
+
+
+
+//-----------------------
+
+
+
 
 pub trait RemoveAfter {
     // returns true if ready to remove
@@ -137,28 +178,34 @@ pub trait RemoveAfter {
 
 
 
-#[derive(Component, Debug)]
-pub struct OneShot {
-   pub position: f32,    
-   pub length: f32,
-}
+// #[derive(Component, Debug)]
+// pub struct OneShot {
+//    pub position: f32,    
+//    pub length: f32,
+// }
 
-impl RemoveAfter for OneShot {
-    fn tick(&mut self, t: f32) -> bool {
-        self.position += t;
-        self.position >= self.length
-    }
-}
+// impl RemoveAfter for OneShot {
+//     fn tick(&mut self, t: f32) -> bool {
+//         self.position += t;
+//         self.position >= self.length
+//     }
+// }
 
-impl Default for OneShot {
-	fn default() -> Self {
-		Self { position: 0.0, length: 5.0 }
-	}
-}
+// impl Default for OneShot {
+// 	fn default() -> Self {
+// 		Self { position: 0.0, length: 5.0 }
+// 	}
+// }
 
-impl OneShot {
-   pub fn normalized(&self) -> f32 { self.position / self.length }
-}
+// impl OneShot {
+//     pub fn from_length(len: f32) -> Self {
+//         Self {position: 0., length: len}
+//     }
+//     pub fn normalized(&self) -> f32 { self.position / self.length }
+// }
+
+
+
 
 #[derive(Component)]
 pub struct JumpTimer {
@@ -179,6 +226,7 @@ impl JumpTimer {
     } 
 }
 
+
 //------------
 
 #[derive(Resource)]
@@ -187,11 +235,8 @@ pub struct LogText(pub Vec<String>);
 #[derive(Component)]
 pub struct LogTextDisplayer;
 
-
-
 #[derive(Event)]
 pub struct LogEvent(pub String);
-
 
 
 #[derive(Component)]

@@ -1,6 +1,22 @@
-use bevy::{prelude::*, render::texture::DEFAULT_IMAGE_HANDLE};
+/*
+can you set global gravity with rapier?
+
+ */
+
+
+use bevy::{
+    prelude::*, 
+    render::texture::DEFAULT_IMAGE_HANDLE, 
+    audio::{
+        PlaybackMode, 
+        Volume
+    }
+};
+
 use bevy_rapier2d::prelude::*;
 use super::components::*;
+
+use crate::GRAVITY_SCALE;
 
 
 
@@ -34,9 +50,18 @@ pub struct PlayerBundle {
     pub locked_axes: LockedAxes,
     pub collision_groups: CollisionGroups,
     pub external_impulse: ExternalImpulse,
+    // pub active_events: ActiveEvents,
 
     //
-    pub ball_sensor: BallSensor
+    pub ball_sensor: BallSensor,
+
+    // audiobundle
+    pub source: Handle<AudioSource>,
+    pub settings: PlaybackSettings,
+
+    pub drop_rate: DropOnMeRate,
+
+
 }
 
 #[allow(unused_parens)]
@@ -56,54 +81,115 @@ impl Default for PlayerBundle {
             //
             velocity: default(),
             rigid_body: RigidBody::Dynamic,
-            collider: Collider::ball(50.),
-            gravity_scale: default(),
+            // collider: Collider::ball(50.),
+            // collider: Collider::cuboid(50., 50.),
+            collider: Collider::capsule_y(30., 20.),
+            gravity_scale: GravityScale(GRAVITY_SCALE),
             restitution: default(),
             locked_axes: LockedAxes::ROTATION_LOCKED,
-            collision_groups: CollisionGroups::new(Group::GROUP_1, (Group::ALL ^ Group::GROUP_2)),
+            // collision_groups: CollisionGroups::new(Group::GROUP_1, (Group::ALL ^ Group::GROUP_2)),
+            // active_events: ActiveEvents::COLLISION_EVENTS,
+            /* collide with everything */
+            collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL),
             external_impulse: default(),
-            ball_sensor: default()
+            ball_sensor: default(),
+            //
+            source: default(),
+            settings: PlaybackSettings { 
+                mode: PlaybackMode::Loop, volume: Volume::new_relative(0.5), speed: 1.0, paused: false 
+            },
 
+            //
+            drop_rate: DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
         }
     }
 }
 
+// so balls can hit players and balls can hit 
+
 
 
 #[derive(Bundle)]
-pub struct PaddleBundle {
-    // doesn't need to be pub because it doesn't need to be specified when 
-    // creating ever
-	pub paddle_marker: PaddleMarker,
+pub struct BallBundle {
+	// from_player: FromPlayer,
+	// time_added: TimeAdded,
 
-    // transform bundle
-    // The transform of the entity.
-    pub local: Transform,
-    // The global transform of the entity.
-    pub global: GlobalTransform,
-    
-    // physics
-    pub rigid_body: RigidBody,
-    pub collider: Collider,
-    pub collision_groups: CollisionGroups
+	/* physics */
+	pub rigid_body: RigidBody,
+	pub collider: Collider,
+    pub collision_groups: CollisionGroups,
+
+	pub gravity_scale: GravityScale,
+	pub mass_props: ColliderMassProperties,
+	pub restitution: Restitution,
+	pub ext_impulse: ExternalImpulse,
+	pub active: ActiveEvents,
+	pub velocity: Velocity,
+
+	/* transform bundle  */
+	pub transform: Transform,
+	pub global_transform: GlobalTransform,
+
 }
 
-#[allow(unused_parens)]
-impl Default for PaddleBundle {
+// set mass props?
+// like density?
+
+impl Default for BallBundle {
+	fn default() -> Self {
+		 Self {
+			rigid_body: RigidBody::Dynamic,
+			collider: Collider::ball(20.),
+            /* in group 1, collide with everything except group 2 */
+            // collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL ^ Group::GROUP_2),
+            collision_groups: CollisionGroups::new(Group::GROUP_2, Group::ALL ^ Group::GROUP_3),
+			gravity_scale: GravityScale(GRAVITY_SCALE),
+			mass_props: default(),
+            restitution: Restitution::coefficient(0.7),
+			ext_impulse: default(),
+			active: ActiveEvents::COLLISION_EVENTS,
+			velocity: default(),
+			transform: default(),
+			global_transform: default()
+		 }
+	}
+}
+
+#[derive(Bundle)]
+pub struct PlayerSensorBundle {
+    pub collision_groups: CollisionGroups,
+    pub player_sensor: PlayerSensor,
+    pub sensor: Sensor,
+    pub collider: Collider,
+    //
+    pub transform: Transform,
+    pub global_transform: GlobalTransform
+}
+
+impl Default for PlayerSensorBundle {
     fn default() -> Self {
         Self {
-            paddle_marker: default(),
-            local: default(),
-            global: default(),
-            rigid_body: RigidBody::KinematicPositionBased,
-            collider: Collider::cuboid(40., 10.),
-            collision_groups: CollisionGroups::new(Group::GROUP_2, (Group::ALL ^ Group::GROUP_1))   
+            collision_groups: CollisionGroups::new(Group::GROUP_3, Group::ALL ^ Group::GROUP_2),
+            player_sensor: PlayerSensor { despawn_on_enter: false },
+            sensor: default(),
+            collider: Collider::ball(50.),
+            transform: default(),
+            global_transform: default()
         }
     }
 }
 
 
+/*
+    commands.spawn((
+        /* in group 2, collide with all */
+        CollisionGroups::new(Group::GROUP_2, Group::ALL),
+        PlayerSensor {despawn_on_enter: true},
+        Sensor,
+        Collider::ball(50.),
+        TransformBundle::from(Transform::from_xyz(-250., 20., 0.)),
+    ));
 
-#[derive(Bundle)]
-pub struct BallBundle {}
+ */
+
 

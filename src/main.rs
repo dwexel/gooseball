@@ -1,53 +1,15 @@
 /*
 
-sort components into areas:
-some components manage the entity's state (by their presence or abscense)
-
 
 with the paddle swing
 -- how long does it take to reach the apex where it hits?
 -- how long does it take until you can swing again
 
-
-ideas;
-increase ball weight
-change paddle to dynamic?
-
-
-
-idea:
-maybe combine pause/unpause keypress with menu-related keypresses
-abstract input sets......
-
-
-todo:
-make ball sensor flash on hit
-
-
-figure out the swing thing
-maybe the ball only gets a hit for one frame?
-like it turns to a sensor after one frame or gets collision group removed?
-
-
-figure out font stuff
-
-
-todo:
-make ui show getting hit,
-like a counter
-
-
-ok now.
-balls systemesssj
-
-
 player radius: 50
 bat length: 40
 ball radius: 20
 
-ok it seemed to me like the game was recting too slowly when the frames were lower
-like in a not normal way.
-check that out
+
 
 
 
@@ -56,43 +18,69 @@ make a class for "input map" / "keybinds"
 that you can pass to a generic system
 
 
-debug text resource
+
+sensor classes
+-- make sure that the system that updates the sensors gets run before the system that reads them
+-- also could you have one that uses genrics?
 
 
-ok so. I would like to make it so only the balls have the component that lets their collisions 
-be detected, at least for now.
 
-but maybe I will be implementing pivkups later...
+
 
 todo:
 use the css stuff to add log elements rather than pushing strings...
 
 
-ball thrower
+audio feebback for the player speed
+(like footsteps get faster)
+
+"closeness to ground" compnent
+
+
+
+kinematic player vs. dynamc player
+-- with dynamic: i should put in linear damping on it if there's no direction being pressed down
+
+
+so an animation has 2 separate things: one, when it's done, and two, when it's ready to be repeated
+/
+
+
+
+SO FOR THE HIT SYSTEM:
+it's Directional,
+up: big hit towards othe player (straight out)
+up side: up and toward other
+side: goes a good distance
+
+maybe, don't need up side for now ...
+but i should try it later
 
 
  */
 
 
-use bevy::transform::TransformSystem;
+use bevy::math::Vec3Swizzles;
+use bevy::transform::{TransformSystem, self};
 use bevy::{
     asset::ChangeWatcher, 
     prelude::*, 
     utils::Duration, 
 };
 use bevy_rapier2d::prelude::*;
-use std::f32::consts::PI;
 
 
 
 mod components;
+use bundles::PlayerSensorBundle;
 use components::*;
 
-mod jump;
+// mod jump;
 mod balls;
 mod menu;
 mod builder;
 mod bundles;
+mod camera;
 
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
@@ -107,8 +95,6 @@ fn main() {
 
         .add_plugins(DefaultPlugins
             .set(AssetPlugin {
-                // This tells the AssetServer to watch for changes to assets.
-                // It enables our scenes to automatically reload in game when we modify their files.
                 watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)), ..default()
             })
             .set(WindowPlugin {
@@ -128,64 +114,58 @@ fn main() {
             spawn_players_system,
             menu::setup_menu_system
         ))
-
-        /*
-            so before/after/chain work on system sets
-            and bevy makes it so a tuple of systems can be coerced into a system set
-            (or for that metter a single system)
-
-            but you can also create explicit sets with labels
-         */
-
-        .configure_sets(Update,
-            (CollectInput, ApplyInput).chain()
-        )
-
+        .configure_sets(Update, (CollectInput, ApplyInput).chain())
         .add_systems(Update,
             (
                 bevy::window::close_on_esc,
-
-                // zoom_2d,
-                camera_system,
-
                 // detect runtime scene changes
                 builder::added_system,
                 builder::changed_system,
+                
+                // update camera
+                camera::camera_system,
 
+                
                 (
-                    get_input_wasd_system,
-                    get_input_arrow_system
+                    get_input::<InputMapArrow>,
+                    get_input::<InputMapWASD>
+                    // get_input_wasd_system,
+                    // get_input_arrow_system
                 )
                 .in_set(CollectInput),
 
                 (   
-                    apply_input_system,
-                    apply_movement_to_paddles,
-                    jump::apply_jump_query,
+                    (apply_input_system, apply_swing).chain()
                 )
                 .in_set(ApplyInput),
+                
+                (
+                    balls::manage_timers, balls::drop_ball 
+                )
+                .run_if(resource_exists_and_equals(Settings_balls(true))),
 
 
 
-                // update timers
-                update_remove_timers::<JumpTimer>,
-                update_remove_timers::<OneShot>,
-
-                balls::ball_thrower,
-
-                balls::drop_ball,
+                // for now
+                // balls::ball_thrower,
                 balls::manage_balls,
-                balls::display_events,
+                
+                // update components that need to detect collisions
+                update_sensors,
 
                 pause_menu_button_system,
-
-                update_log_system
+                update_log_system,
+                update_sound_speed
 
             )
             .run_if(in_state(AppState::InGame))
         )
-        .add_systems(PostUpdate, 
-            (reset_updated_flags).run_if(in_state(AppState::InGame))
+        .add_systems(PostUpdate,    
+            (
+                update_remove_timers::<JumpTimer>,
+                // update_remove_timers::<OneShot>,
+                reset_updated_flags.run_if(in_state(AppState::InGame))
+            )
         )
 
         // add physics setup
@@ -221,13 +201,11 @@ fn main() {
             .run_if(in_state(AppState::PauseMenu))
         )
 
-        .add_systems(OnEnter(AppState::Reset), 
+        .add_systems(OnEnter(AppState::Reset),
             (
-                // state is set here but ... when will it be changed?
                 reset_system, 
                 spawn_players_system
-            )
-            .chain()
+            ).chain()
         )
 
         // types that are deserialized
@@ -239,20 +217,21 @@ fn main() {
         .register_type::<(f32, f32)>()
         .register_type::<Vec<(f32, f32)>>()
 
-
         .add_state::<AppState>()
-
+        
         .insert_resource(ThrowTimer(Timer::from_seconds(3., TimerMode::Repeating)))
-
         .insert_resource(BallTimer(Timer::from_seconds(BALL_TIME, TimerMode::Repeating)))
-
-        .init_resource::<PlayerInfo>()
+        // .init_resource::<PlayerInfo>()
 
 
         .insert_resource(LogText(
             vec!["try me!".to_string()]
         ))
         
+        .insert_resource(Settings_players(2))
+        .insert_resource(Settings_balls(true))
+        .insert_resource(Settings_log(true))
+
         .add_event::<LogEvent>()
 
         .run();
@@ -268,34 +247,28 @@ pub enum AppState {
     Reset
 }
 
-
-
-
-
-
 const SCENE_FILE_PATH: &str = "main.scn.ron";
 const BALL_SIZE: f32 = 20.;
 
-const SWING_RIGHT: bool = true;
-const ANIM_LENGTH: f32 = 0.5;
-const PADDLE_DISTANCE: f32 = 100.;
+// const SWING_RIGHT: bool = true;
+// const ANIM_LENGTH: f32 = 0.5;
+// const PADDLE_DISTANCE: f32 = 100.;
+
 const DROP_HEIGHT: f32 = 200.;
 
 
-//
-const ACC: f32 = 12.;
+const ACC: f32 = 16.;
 const BALL_TIME: f32 = 2.;
-
 // wacko
-const GRAVITY_SCALE: f32 = 2.;
+const GRAVITY_SCALE: f32 = 5.;
 
-
-const JUMP_CHECK_HEIGHT: f32 = 80.0;
 const JUMP_IMPULSE: f32 = 100.;
-const JUMP_TIME: f32 = 2.;
+
 
 
 // ------------------ setup
+
+
 
 fn setup(
     mut commands: Commands,
@@ -315,71 +288,71 @@ fn setup(
         LogTextDisplayer
     ));
 
-    // spawn ball sensor
-    // ball detector component?
-    commands.spawn((
-        // RigidBody::Fixed,
-        // ball sensor has to have a sensor
-        // bundle would make sense
-        // BallSensor::new(),
-
+/*      commands.spawn((
+        BallSensor::default(),
         Sensor,
-        // ActiveEvents::COLLISION_EVENTS,
-        // incideental
         Collider::ball(100.),
         TransformBundle::from(Transform::from_xyz(100., 100., 0.)),
     ));
+ */
 
-    // spawn pickup
-    // requires sensor and pickupsensor component
+    commands.spawn(PlayerSensorBundle {
+        player_sensor: PlayerSensor { despawn_on_enter: true },
+        transform: Transform::from_xyz(-250., 20., 0.),
+        ..default()
+    });
 
+    // commands.spawn((
+    //     /* in group 2, collide with all */
+    //     CollisionGroups::new(Group::GROUP_1, Group::ALL),
+    //     PlayerSensor::default(),
+    //     Sensor,
+    //     Collider::ball(100.),
+    //     TransformBundle::from(Transform::from_xyz(100., 100., 0.)),
+    // ));
 
+    // /* spawn a pickup */
+    // commands.spawn((
+    //     /* in group 2, collide with all */
+    //     CollisionGroups::new(Group::GROUP_1, Group::ALL),
+    //     PlayerSensor {despawn_on_enter: true},
+    //     Sensor,
+    //     Collider::ball(50.),
+    //     TransformBundle::from(Transform::from_xyz(-250., 20., 0.)),
+    // ));
 }
 
+
+
 fn spawn_players_system(
-    info: Res<PlayerInfo>, 
     mut commands: Commands, 
+    settings: Res<Settings_players>, 
     asset_server: Res<AssetServer>
 ) {
     
     let icon_handle = asset_server.load("goose2.png");
 
-    let c1 = commands.spawn(
-        bundles::PaddleBundle {..default()}
-    )
-    .id();
-
     commands.spawn(
         bundles::PlayerBundle {
+            source: asset_server.load("Windless Slopes.ogg"),
             texture: icon_handle.clone(),
             transform: Transform::from_xyz(0., -100., 0.),
-            gravity_scale: GravityScale(GRAVITY_SCALE),
-            restitution: Restitution::coefficient(0.7),
             ..default()
         }
     )
-    .insert(InputMethod_wasd)
-    .insert(SingleChild(c1))
+    .insert(InputMapWASD)
     .insert(Player1Marker);
 
-    if info.players != 2 {return}
-
-    let c2 = commands.spawn(
-        bundles::PaddleBundle {..default()}
-    )
-    .id();
+    if settings.0 != 2 {return}
 
     commands.spawn(
         bundles::PlayerBundle {
             texture: icon_handle.clone(),
             transform: Transform::from_xyz(100., -100., 0.),
-            gravity_scale: GravityScale(GRAVITY_SCALE),
-            restitution: Restitution::coefficient(0.7),
             ..default()
         }
     )
-    .insert(InputMethod_arrow)
-    .insert(SingleChild(c2))
+    .insert(InputMapArrow)
     .insert(Player2Marker);
 }
 
@@ -389,18 +362,36 @@ fn spawn_players_system(
 fn reset_system (
     mut commands: Commands, 
     bodies: Query<Entity, With<RigidBody>>,
-    mut next: ResMut<NextState<AppState>>
+    mut next: ResMut<NextState<AppState>>,
+    mut log_q: Query<&mut Text, With<LogTextDisplayer>>
 ) {
     for entity in bodies.iter() {
         commands.entity(entity).despawn();
     }
 
     next.set(AppState::InGame);
+
+    for mut text in log_q.iter_mut() {
+        text.sections.clear();
+    }
 }
 
 
 
 // -------------------- update
+
+fn update_sound_speed(
+    // music_controller: Query<&AudioSink, With<MyMusic>>, 
+    players_displayers: Query<(&AudioSink, &Sprite, &Velocity)>,
+) {
+    for (sink, _, vel) in players_displayers.iter() {
+        // so what exaxtly is the maximum velocity???????
+        // how is such a thing calculated
+        // todo: check if on the ground
+        sink.set_speed(0.2 + (vel.linvel.x.abs() / 300.0));
+        // todo: flip sprite
+    }
+}
 
 fn pause_menu_button_system(
     keys: Res<Input<KeyCode>>,
@@ -415,263 +406,341 @@ fn pause_menu_button_system(
             AppState::PauseMenu => {
                 next.set(AppState::InGame);
             },
-            _ => {}
+            _ => {panic!();}
         }
     }
 }
 
 
 
-fn zoom_2d(
-    mut q: Query<&mut OrthographicProjection>,
-    keys: Res<Input<KeyCode>>,
-    time: Res<Time>,
-) {
-    let zoom_speed = 10.;
-    let mut projection = q.single_mut();
-    // zoom out
-    if keys.pressed(KeyCode::Minus) {
-        projection.scale += zoom_speed * time.delta_seconds();
-    }
-    // zooom in
-    if keys.pressed(KeyCode::Equals) {
-        projection.scale -= zoom_speed * time.delta_seconds();
-    }
-
-    projection.scale = projection.scale.clamp(0.5, 5.0);
-}
-
-fn camera_system(
-    mut q_camera: Query<(&mut Transform, &mut OrthographicProjection)>,
-    q_targets: Query<&Transform, (With<CameraTarget>, Without<OrthographicProjection>)>,
-
-    //
-    keys: Res<Input<KeyCode>>,
-    time: Res<Time>,
-) {
-
-
-    let (mut camera, mut projection) = q_camera.single_mut();
-
-    // if one target
-    if let Ok(target) = q_targets.get_single() {
-        camera.translation = target.translation;
-        projection.scale = 1.;
-
-        return;
-    }
-
-    // convert to vec2?
-    let sum: Vec3 = q_targets.iter().map(|t| &t.translation).sum();  
-    let count = q_targets.iter().count() as f32;
-
-    let centroid = Vec3::new(
-        sum.x / count,
-        sum.y / count,
-        0.
-    );
-
-    // set camera pos
-    camera.translation = centroid;
-
-    // -------------
-
-    let cam = Vec2::new(camera.translation.x, camera.translation.y);
-
-    let furthest: Vec2;
-
-    if q_targets.iter().count() == 2 {
-        let f_tran = q_targets.iter().next().unwrap().translation;
-        furthest = Vec2::new(f_tran.x, f_tran.y);
-    }
-    else {
-        furthest = Vec2::ZERO;
-    }
-
-
-    let cam_to_target = furthest - cam;
-
-    let padding = 50.;
-    let window_x = 400.;
-    let window_y = 300.;
-
-    // projection.scale =
-    //         (cam_to_target.x.abs() / window_x)
-    //     .max(cam_to_target.y.abs() / window_y)
-    //     .max(1.);
-
-    if true {
-
-        projection.scale =
-            ((cam_to_target.x.abs() + padding) / window_x)
-        .max((cam_to_target.y.abs() + padding) / window_y)
-        .max(1.);
-
-    }
-    else {
-        if keys.pressed(KeyCode::Minus) {
-            projection.scale += 10. * time.delta_seconds();
-        }
-        // zooom in
-        if keys.pressed(KeyCode::Equals) {
-            projection.scale -= 10. * time.delta_seconds();
-        }
-    
-        projection.scale = projection.scale.clamp(0.5, 5.0);
-    }
-}
-
-
-// fn get_input(mut q: Query<(&mut InputHolder, InputMethod)>) {
-//     for (mut holder, keybinds) in q.iter_mut() {
-//         match keybinds {
-//             // yeah
-//         }
-//     }
-// }
 
 
     // good for analog input
 // note: could probably genericize this
 
+#[derive(Component)]
+struct InputMapWASD;
+
+#[derive(Component)]
+struct InputMapArrow;
+
+
+
+
+trait InputMap {
+    const RIGHT: KeyCode;
+    const UP: KeyCode;
+    const LEFT: KeyCode;
+    const DOWN: KeyCode;
+    const JUMP: KeyCode;
+    const SWING: KeyCode;
+}
+
+impl InputMap for InputMapWASD {
+    const RIGHT: KeyCode = KeyCode::D;
+    const UP: KeyCode = KeyCode::W;
+    const LEFT: KeyCode = KeyCode::A;
+    const DOWN: KeyCode = KeyCode::S;
+    const JUMP: KeyCode = KeyCode::F;
+    const SWING: KeyCode = KeyCode::G;
+}
+
+impl InputMap for InputMapArrow {
+    const RIGHT: KeyCode = KeyCode::Right;
+    const UP: KeyCode = KeyCode::Up;
+    const LEFT: KeyCode = KeyCode::Left;
+    const DOWN: KeyCode = KeyCode::Down;
+    const JUMP: KeyCode = KeyCode::BracketLeft;
+    const SWING: KeyCode = KeyCode::BracketRight;
+}
+
+fn get_input<T: Component + InputMap>(
+    keys: Res<Input<KeyCode>>, 
+    mut q: Query<&mut InputHolder, With<T>>
+) {
+    let mut h = InputHolder { direction: Vec2::ZERO, jump: false, swing: false };
+
+    if keys.pressed(T::RIGHT) {h.direction.x += 1.}
+    if keys.pressed(T::UP) {h.direction.y += 1.}
+    if keys.pressed(T::LEFT) {h.direction.x -= 1.}
+    if keys.pressed(T::DOWN) {h.direction.y -= 1.}
+
+    if keys.just_pressed(T::JUMP) {h.jump = true}
+    if keys.just_pressed(T::SWING) {h.swing = true}
+
+    h.direction = h.direction.normalize_or_zero();
+    
+    for mut holder in q.iter_mut() {
+        *holder = h.clone();
+    }
+}
+
 fn get_input_wasd_system(
     mut players_query: Query<&mut InputHolder, With<InputMethod_wasd>>,
     keys: Res<Input<KeyCode>>
 ) {
+    // let k = *keys;
+
     let mut h = InputHolder { direction: Vec2::ZERO, jump: false, swing: false };
 
-    if keys.pressed(KeyCode::S) {
-        h.direction.y -= 1.;
-    }
-    // if keys.pressed(KeyCode::W) {
-    //     h.direction.y += 1.;
-    // }
-
-    if keys.just_pressed(KeyCode::W) {
-        h.jump = true;
-    }
     if keys.pressed(KeyCode::D) {
         h.direction.x += 1.;
+    }
+    if keys.pressed(KeyCode::W) {
+        h.direction.y += 1.;
     }
     if keys.pressed(KeyCode::A) {
         h.direction.x -= 1.;
     }
+    if keys.pressed(KeyCode::S) {
+        h.direction.y -= 1.;
+    }
+
     if keys.just_pressed(KeyCode::F) {
+        h.jump = true;
+    }
+    if keys.just_pressed(KeyCode::G) {
         h.swing = true;
     }
 
-    h.direction = h.direction.normalize();
-
+    h.direction = h.direction.normalize_or_zero();
+    
     for mut holder in players_query.iter_mut() {
         *holder = h.clone();
     }
 }
 
-// yeah
 fn get_input_arrow_system(
     mut players_query: Query<&mut InputHolder, With<InputMethod_arrow>>,
     keys: Res<Input<KeyCode>>
 ) {
     let mut h = InputHolder { direction: Vec2::ZERO, jump: false, swing: false };
 
-    if keys.pressed(KeyCode::Down) {
-        h.direction.y -= 1.;
-    }
-    if keys.just_pressed(KeyCode::Up) {
-        h.jump = true;
-    }
     if keys.pressed(KeyCode::Right) {
         h.direction.x += 1.;
+    }
+    if keys.pressed(KeyCode::Up) {
+        h.direction.y += 1.;
     }
     if keys.pressed(KeyCode::Left) {
         h.direction.x -= 1.;
     }
-    if keys.any_just_pressed([KeyCode::M]) {
+    if keys.pressed(KeyCode::Down) {
+        h.direction.y -= 1.;
+    }
+
+    if keys.just_pressed(KeyCode::Up) {
+        h.jump = true;
+    }
+    if keys.just_pressed(KeyCode::M) {
         h.swing = true;
     }
+
+    h.direction = h.direction.normalize_or_zero();
     
-    // apply input
     for mut holder in players_query.iter_mut() {
         *holder = h.clone();
     }
 }
 
+#[derive(Clone, Copy, Component, Debug, PartialEq)]
+enum Direction {
+    Right,
+    Up,
+    Left,
+    Down
+}
 
-// update state of the player entity
-fn apply_input_system(
-    mut commands: Commands,
-    mut players_query: Query<(&InputHolder, &SingleChild, &mut Velocity)>
-) {
-    for (input, child, mut velocity) in players_query.iter_mut() {
+impl TryFrom<Vec2> for Direction {
+    // todo: check 0 with epsilon
+    type Error = &'static str;
 
-        // check input magnitude
-        // length squared is faster
-        
-        // let input = Vec2::new()
-
-        if input.direction.length_squared() >= 0.01 {
-
-
-            velocity.linvel += input.direction * ACC;
+    fn try_from(value: Vec2) -> Result<Self, Self::Error> {
+        if value.x.is_nan() || value.y.is_nan() {
+            return Err("NaN in vector");
         }
-
-
-        if input.swing {
-            // use special child component
-            // add oneshot entity
-            let paddle = child.0;
-            commands.entity(paddle).insert(OneShot {length: ANIM_LENGTH, ..default()});
+        if value.x == 0. && value.y == 0. {
+            return Err("Vector is 0");
         }
+        let abs = value.abs();
+        if abs.x >= abs.y {
+            if value.x >= 0. {
+                Ok(Self::Right)
+            } else {
+                Ok(Self::Left)
+            }
+        } else {
+            if value.y >= 0. {
+                Ok(Self::Up)
+            } else {
+                Ok(Self::Down)
+            }
+        }        
     }
 }
 
+impl From<&Direction> for Vec2 {
+    fn from(value: &Direction) -> Self {
+        match *value {
+            Direction::Right => Self::X,
+            Direction::Up => Self::Y,
+            Direction::Left => Self::NEG_X,
+            Direction::Down => Self::NEG_Y,
+        }
+    }
+}
 
 
 
 
 /*
-apply motion to paddles
-*/
-fn apply_movement_to_paddles(
-    mut paddles: Query<(&mut Transform, Option<&OneShot>), With<PaddleMarker>>,
-    players: Query<(&SingleChild, &Transform), Without<PaddleMarker>>
+can *move*
+if you make input systems exclusive to each player
+
+
+damn,,,,,
+normalize_or_zero
+
+ */
+
+
+fn apply_input_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut players_q: Query<(
+        Entity, 
+        &InputHolder, 
+        &mut Velocity,
+        Option<&mut OneShot>,
+        &mut ExternalImpulse, 
+        &Transform
+    )>,
+    rapier_context: Res<RapierContext>
 ) {
-    // if player is facing right, we want the sign to be negative
-    // yea
+    for (entity, input, mut velocity, o, mut ext, transform) in players_q.iter_mut() {
+        let horz = Vec2::new(input.direction.x, 0.);
 
-    for (child, p_transform) in players.iter() {
-        if let Ok((mut c_transform, anim)) = paddles.get_mut(child.0) {
-            let sign = match SWING_RIGHT { true => 1., false => -1.};
-            let span = Vec3::new(sign * PADDLE_DISTANCE, 0., 0.);
-            if let Some(a) = anim {
-                // define an arc as the range
-                let arc_width = PI / 2.;
-                let arc_start = PI / 4.;
+        /* apply acceleration or damping */
 
-                // positive rotation = counterclockwise
-                // negitive rotation = clockwise
-                // animation starts and stops at a designated point
-                let theta = a.normalized();
-                
-                let rot = Quat::from_rotation_z((sign * theta * arc_width) + sign * arc_start);
-                c_transform.translation = p_transform.translation + (rot * span);
-                c_transform.rotation = rot;
-                
+        if horz.length_squared() >= 0.01 {
+            // velocity.linvel += horz * ACC;
+            velocity.linvel += horz * 22.;
+        }
+        else if velocity.linvel.x != 0. {
+            let sign = velocity.linvel.x.signum();
+            velocity.linvel.x -= 10. * sign;
+            if velocity.linvel.x.signum() != sign {
+                velocity.linvel.x = 0.;
             }
-            else {
-                let easing_speed = 0.3;
+        }
 
-                // resting mode
-                let target = p_transform.translation + span;
-                let current = c_transform.translation;
-                c_transform.translation += (target - current) * easing_speed;
-                c_transform.rotation = Quat::IDENTITY;
+        /* can't start a new swing until the next frame huh */
+
+        if let Some(mut oneshot) = o {
+            if oneshot.0.tick(time.delta()).just_finished() {
+                commands.entity(entity).remove::<OneShot>();
+            }
+        }
+        else {
+            if let Ok(dir) = Direction::try_from(input.direction) {
+                commands.entity(entity).insert(dir);
+            }
+            if input.swing {
+                commands.entity(entity).insert(
+                    OneShot::from_seconds(0.5),
+                );
+            }
+        }
+
+        if input.jump {
+            let ray_origin = transform.translation.xy();
+            let ray_dir = Vec2::new(0., -1.);
+            let max_toi = 100.;
+            let solid = false;
+            /* only query fixed rigidbodies and colliders with no body */
+            let filter = QueryFilter::only_fixed();
+            if let Some((_entity, toi)) = rapier_context.cast_ray(ray_origin, ray_dir, max_toi, solid, filter) {
+                let distance_to_floor = (ray_dir * toi).y.abs();
+                let player_height = 50.;
+                if distance_to_floor < player_height + 10. {
+                    ext.impulse = Vec2::new(0., JUMP_IMPULSE);
+                }
             }
         }
     }
-
-    
 }
+
+
+
+
+fn apply_swing(
+    p1_q: Query<(Entity, &Transform), With<Player1Marker>>,
+    p2_q: Query<(Entity, &Transform), With<Player2Marker>>,
+    players_q: Query<(&OneShot, &Direction)>,
+
+    mut balls_q: Query<(&Transform, &mut Velocity, &mut FromPlayer)>,
+    mut gizmos: Gizmos,
+    mut commands: Commands
+) {
+    let p1 = p1_q.single();
+    let p2 = p2_q.single();
+    let p1_to_p2 = p2.1.translation - p1.1.translation;
+
+    for (e_player, translation, to_other) in [
+        (p1.0, p1.1.translation, p1_to_p2), 
+        (p2.0, p1.1.translation, -p1_to_p2)
+    ] {
+        if let Ok((_, pressed_direction)) = players_q.get(e_player) {
+            let player_origin = translation.xy();
+            let d: Vec2 = pressed_direction.into();
+            let offset = d * 80.;
+
+            /* box size: 100, 100 */
+
+            gizmos.ray_2d(player_origin, offset, Color::DARK_GREEN);
+            gizmos.rect_2d(player_origin + offset, 0., Vec2::new(100., 100.), Color::DARK_GREEN);
+            let rect = Rect::from_center_size(player_origin + offset, Vec2::new(100., 100.));
+
+            /* 
+                player half width: 20
+                player half height: 50
+                hit velocity: 300
+                */
+
+            let foot = Vec2::new(
+                player_origin.x + d.x * 20.,
+                player_origin.y - 50.
+            );
+
+            gizmos.circle_2d(foot, 10., Color::GREEN);
+
+            for (ball_transform, mut velocity, mut from_player) in balls_q.iter_mut() {
+                if rect.contains(
+                    ball_transform.translation.xy()
+                ) {
+                    from_player.0 = e_player;
+
+                    commands.entity(e_player).remove::<OneShot>();
+
+                    if *pressed_direction == Direction::Up {
+                        velocity.linvel = 400. * Vec2::new(to_other.x.signum(), 0.);
+                    }
+                    else {
+                        velocity.linvel = (ball_transform.translation.xy() - foot).normalize_or_zero() * 300.;         
+                    }
+
+                    // velocity.linvel == match *pressed_direction {
+                    //     Direction::Up => 300. * Vec2::new(to_other.signum(), 0.),
+                    //     Direction::Right => 300. * 
+                    // }
+                }
+            }
+        }
+    }
+}
+
+
+
 
 
 fn update_remove_timers<T: RemoveAfter + Component>(
@@ -727,3 +796,71 @@ fn update_log_system(
         }
     }
 }
+
+
+fn update_sensors(
+    mut collision_events: EventReader<CollisionEvent>,
+    mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
+    
+    player_sensors: Query<(&PlayerSensor, Entity)>,
+    balls: Query<&FromPlayer>,
+ 
+    mut log: EventWriter<LogEvent>,
+    mut commands: Commands
+ ) {
+    for collision_event in collision_events.iter() {
+  
+        if let CollisionEvent::Started(e1, e2, _flags) = *collision_event {
+ 
+            if let Ok((mut sensor, _)) = ball_sensors.get_mut(e1) {
+                sensor.hit_on_last_update = true;
+ 
+                // log.send(LogEvent(format!(
+                // 	"ball sensor: {e1:?}\n"
+                // )));
+ 
+ 
+ 
+                 // unstable
+                 let ball = balls.get(e2).unwrap();
+                 log.send(LogEvent(format!("ball sensor: {:?} from: {:?}\n", e1, ball.0)));
+ 
+             }
+             else if let Ok((mut sensor, _)) = ball_sensors.get_mut(e2) {
+                 sensor.hit_on_last_update = true;
+ 
+                 // log.send(LogEvent(format!(
+                 // 	"ball sensor: {e1:?}\n"
+                 // )));
+ 
+                 // unstable
+                 let ball = balls.get(e1).unwrap();
+                 log.send(LogEvent(format!("ball sensor: {:?} from: {:?}\n", e2, ball.0)));
+             }
+ 
+            if let Ok((sensor, sensor_e)) = player_sensors.get(e1) {
+                log.send(LogEvent(format!("player sensor was hit: {e1:?}\n")));
+                if sensor.despawn_on_enter {
+                    commands.entity(sensor_e).despawn();
+                }
+            }
+            else if let Ok((sensor, sensor_e)) = player_sensors.get(e2) {
+                log.send(LogEvent(format!("player sensor was hit: {e2:?}\n")));
+                if sensor.despawn_on_enter {
+                    commands.entity(sensor_e).despawn();
+                }
+            }
+ 
+ 
+             // use bitwise?
+             // if flags == CollisionEventFlags::SENSOR {
+             // 	if let Ok((mut b, _)) = sensors.get_mut(e1) {
+             // 		b.hit_on_last_update = true;
+             // 	}
+             // 	else if let Ok((mut b, _)) = sensors.get_mut(e2) {
+             // 		b.hit_on_last_update = true;
+             // 	}
+             // }
+         }
+     }
+ }

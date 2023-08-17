@@ -54,7 +54,7 @@ pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>)
 			TextBundle { text: Text::from_section("balls (off)", text_style.clone()), ..default()},
 		));
 		parent.spawn((
-			TextBundle { text: Text::from_section("log (hiding)", text_style.clone()), ..default()},
+			TextBundle { text: Text::from_section("log (showing)", text_style.clone()), ..default()},
 		));
 	});
 }
@@ -67,20 +67,16 @@ pub fn run_menu_system(
 
 	//
 	mut next: ResMut<NextState<AppState>>,
-	mut player_options: ResMut<PlayerInfo>,
-
+	// mut player_options: ResMut<PlayerInfo>,
+	mut settings_balls: ResMut<Settings_balls>,
+	mut settings_players: ResMut<Settings_players>,
+	mut settings_log: ResMut<Settings_log>,
 
 	//
 	mut display: Query<&mut Visibility, With<LogTextDisplayer>>
 
 ) {
-
-	// // store refs?
-	// maybe use dereference
-	// whatev
-
 	let ents: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
-
 
 	if keys.any_just_pressed([KeyCode::W, KeyCode::Up]) {
 		if *menu_pointer == 0 { *menu_pointer = ents.len() }
@@ -99,7 +95,6 @@ pub fn run_menu_system(
 		}
 	}
 
-
 	// get returns a borrow
 	// safe 
 	if let Some(e) = ents.get(*menu_pointer) {
@@ -116,23 +111,22 @@ pub fn run_menu_system(
 		if keys.any_just_pressed([KeyCode::F, KeyCode::M]) {
 			match *menu_pointer {
 				0 => {
-					player_options.players = 1;
+					settings_players.0 = 1;
 					next.set(AppState::Reset);
 				},
 				1 => {
 					next.set(AppState::Reset);
 				},
 				2 => {
-					player_options.balls = !player_options.balls;
-					t.sections[0].value = match player_options.balls {
+					settings_balls.0 = !settings_balls.0;
+					t.sections[0].value = match settings_balls.0 {
 						true => "balls (on)".to_string(),
 						false => "balls (off)".to_string()
 					}
 				},
 				3 => {
-					player_options.show_log = !player_options.show_log;
-
-					t.sections[0].value = match player_options.show_log {
+					settings_log.0 = !settings_log.0;
+					t.sections[0].value = match settings_log.0 {
 						true => {
 							for mut v in display.iter_mut() {
 								*v = Visibility::Visible
@@ -146,9 +140,6 @@ pub fn run_menu_system(
 							"log (hiding)".to_string()
 						}
 					}
-
-					// show it
-					
 				}
 				_ => {}
 			}
@@ -156,15 +147,10 @@ pub fn run_menu_system(
 	}
 }
 
-
-
 // changes all hidden nodes to visibile
 // menu parent is set to be hidden so...
-
 pub fn show_menu(mut q: Query<&mut Visibility, With<MenuMarker>>) {
 	for mut visibility in q.iter_mut() {
-		println!("{:?}", visibility);
-
 		if *visibility == Visibility::Hidden {
 			*visibility = Visibility::Visible;
 		}
