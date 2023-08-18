@@ -62,12 +62,24 @@ ok "balls" isn't a good subject for a separate file
 
 a better way to separate code owuld be by subject and schedule, like "player updates"
 
+ok I do want to do a thing with the corner directions.....
+especially because when you're pressing two directions at once you slow down, which could mesh 
+with another mechanic ...
+or crouching too is something to think about.
+
+
+sound approaches
+-- have a looping sound that I set the playback speed of based on velocity
+-- have a one-shot sound that I play every time the player moves a set amount (modulo)
+
+
+how to manually set framrate?
 
 
  */
 
-
 use bevy::math::Vec3Swizzles;
+use bevy::sprite::MaterialMesh2dBundle;
 use bevy::transform::TransformSystem;
 use bevy::{
     asset::ChangeWatcher, 
@@ -79,21 +91,17 @@ use bevy_rapier2d::prelude::{*, QueryFilter};
 
 
 mod components;
-use bundles::PlayerSensorBundle;
-use components::*;
-
 mod balls;
 mod menu;
 mod builder;
 mod bundles;
 mod camera;
 
+use bundles::PlayerSensorBundle;
+use components::*;
 
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
-struct CollectInput;
 
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
-struct ApplyInput;
+
 
 
 fn main() {
@@ -124,6 +132,7 @@ fn main() {
         .add_systems(Update,
             (
                 bevy::window::close_on_esc,
+
                 // detect runtime scene changes
                 builder::added_system,
                 builder::changed_system,
@@ -131,7 +140,8 @@ fn main() {
                 // update camera
                 camera::camera_system,
 
-            (
+                // get button input
+                (
                     get_input::<InputMapArrow>,
                     get_input::<InputMapWASD>
                 )
@@ -143,7 +153,8 @@ fn main() {
                 .in_set(ApplyInput),
                 
                 (
-                    balls::manage_timers, balls::drop_ball 
+                    balls::manage_timers, 
+                    balls::drop_ball
                 )
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
@@ -153,7 +164,7 @@ fn main() {
                 update_sensors,
                 pause_menu_button_system,
                 update_log_system,
-                update_sound_speed
+                // update_sound_speed
 
             )
             .run_if(in_state(AppState::InGame))
@@ -219,6 +230,8 @@ fn main() {
 
         .insert_resource(ThrowTimer(Timer::from_seconds(3., TimerMode::Repeating)))
         .insert_resource(BallTimer(Timer::from_seconds(BALL_TIME, TimerMode::Repeating)))
+        .insert_resource(BallSetupTimer(Timer::from_seconds(5., TimerMode::Repeating)))
+
         .insert_resource(LogText(Vec::new()))
         .insert_resource(Settings_players(2))
         .insert_resource(Settings_balls(true))
@@ -226,6 +239,13 @@ fn main() {
         .add_event::<LogEvent>()
         .run();
 }
+
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+struct CollectInput;
+
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+struct ApplyInput;
+
 
 
 
@@ -246,7 +266,7 @@ const DROP_HEIGHT: f32 = 200.;
 // const ACC: f32 = 16.;
 const BALL_TIME: f32 = 2.;
 const GRAVITY_SCALE: f32 = 5.;
-const JUMP_IMPULSE: f32 = 100.;
+// const JUMP_IMPULSE: f32 = 100.;
 
 
 
@@ -256,7 +276,9 @@ const JUMP_IMPULSE: f32 = 100.;
 
 fn setup(
     mut commands: Commands,
-    asset_server: Res<AssetServer>
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>
 ) {
     commands.spawn(DynamicSceneBundle {
         scene: asset_server.load(SCENE_FILE_PATH), ..default()
@@ -304,6 +326,28 @@ fn setup(
     //     Collider::ball(50.),
     //     TransformBundle::from(Transform::from_xyz(-250., 20., 0.)),
     // ));
+
+    commands.spawn(MaterialMesh2dBundle {
+        mesh: meshes.add(shape::Circle::new(50.).into()).into(),
+        material: materials.add(ColorMaterial::from(Color::PURPLE)),
+        transform: Transform::from_translation(Vec3::new(-150., 0., 0.)),
+        ..default()
+    });
+
+    let icon_handle = asset_server.load("icon.png");
+
+    commands.spawn(SpriteBundle {
+        texture: icon_handle.clone(),
+        // sprite: Sprite {
+        //     custom_size: Some(Vec2::new(200., 200.)), ..default()
+        // },
+        transform: Transform::from_xyz(0., 0., 0.),
+        ..default()
+    });
+
+    
+    
+
 }
 
 
@@ -317,17 +361,14 @@ fn spawn_players_system(
 
     commands.spawn(
         bundles::PlayerBundle {
-            source: asset_server.load("Windless Slopes.ogg"),
+            source: asset_server.load("Hat19.wav"),
             texture: icon_handle.clone(),
             transform: Transform::from_xyz(0., 0., 0.),
             ..default()
         }
     )
     .insert(InputMapWASD)
-    .insert(Player1Marker)
-    .insert(CharacterVelocity(Vec2::ZERO));
-
-    
+    .insert(Player1Marker);
 
     if settings.0 != 2 {return}
 
@@ -366,18 +407,6 @@ fn reset_system (
 
 // -------------------- update
 
-fn update_sound_speed(
-    // music_controller: Query<&AudioSink, With<MyMusic>>, 
-    players_displayers: Query<(&AudioSink, &Sprite, &Velocity)>,
-) {
-    for (sink, _, vel) in players_displayers.iter() {
-        // so what exaxtly is the maximum velocity???????
-        // how is such a thing calculated
-        // todo: check if on the ground
-        sink.set_speed(0.2 + (vel.linvel.x.abs() / 300.0));
-        // todo: flip sprite
-    }
-}
 
 fn pause_menu_button_system(
     keys: Res<Input<KeyCode>>,
@@ -436,8 +465,8 @@ impl InputMap for InputMapArrow {
     const UP: KeyCode = KeyCode::Up;
     const LEFT: KeyCode = KeyCode::Left;
     const DOWN: KeyCode = KeyCode::Down;
-    const JUMP: KeyCode = KeyCode::BracketLeft;
-    const SWING: KeyCode = KeyCode::BracketRight;
+    const JUMP: KeyCode = KeyCode::Comma;
+    const SWING: KeyCode = KeyCode::Period;
 }
 
 fn get_input<T: Component + InputMap>(
@@ -454,6 +483,8 @@ fn get_input<T: Component + InputMap>(
     if keys.just_pressed(T::JUMP) {h.jump = true}
     if keys.just_pressed(T::SWING) {h.swing = true}
 
+    // YEAH
+    // does this work with analog input?
     h.direction = h.direction.normalize_or_zero();
     
     for mut holder in q.iter_mut() {
@@ -470,10 +501,10 @@ enum Direction {
     Down
 }
 
+#[allow(unused)]
 impl TryFrom<Vec2> for Direction {
     // todo: check 0 with epsilon
     type Error = &'static str;
-
     fn try_from(value: Vec2) -> Result<Self, Self::Error> {
         if value.x.is_nan() || value.y.is_nan() {
             return Err("NaN in vector");
@@ -511,24 +542,6 @@ impl From<&Direction> for Vec2 {
 
 
 
-
-/*
-can *move*
-if you make input systems exclusive to each player
-
-
-damn,,,,,
-normalize_or_zero
-
- */
-
-
-#[derive(Component)]
-struct CharacterVelocity(Vec2);
-
-
-
-
 fn apply_input_system(
     time: Res<Time>,
     mut commands: Commands,
@@ -546,15 +559,14 @@ fn apply_input_system(
 ) {
     for (entity, input, o, mut controller, transform, mut c_vel) in players_q.iter_mut() {
         let grav = -0.2;
-
         c_vel.0.y += grav;
-        c_vel.0.y = c_vel.0.y.clamp(-10., 10.);
 
-        
-        /* can't start a new swing until the next frame huh */
+        // c_vel.0.y = c_vel.0.y.clamp(-5., 5.); // terminal velocity
+
+        /* if swing is timed out then let it start again */
 
         if let Some(mut oneshot) = o {
-            if oneshot.0.tick(time.delta()).just_finished() {
+            if oneshot.timer.tick(time.delta()).just_finished() {
                 commands.entity(entity).remove::<OneShot>();
             }
         }
@@ -572,62 +584,92 @@ fn apply_input_system(
         /* raycast to ground */
 
         if input.jump {
-            if let Some((_entity, toi)) = rapier_context.cast_ray(
+            if let Some((_entity, _toi)) = rapier_context.cast_ray(
                 transform.translation.xy(), 
                 Vec2::new(0., -1.), 
                 60., 
                 false, 
                 QueryFilter::only_fixed()
             ) {
-                c_vel.0.y = 10.;
+                c_vel.0.y = 20.;
             }
         }
 
         /* apply velocity to translation */
+
+        // controller.translation = Some(time.delta_seconds() * 30. * Vec2::new(
+        //     3. * input.direction.x,
+        //     c_vel.0.y
+        // ));
+
         controller.translation = Some(Vec2::new(
-            input.direction.x,
+            3. * input.direction.x,
             c_vel.0.y
         ));
+
     }
 }
 
 /* Read the character controller collisions stored in the character controller’s output. */
-fn modify_character_controller_slopes(mut outputs: Query<(&KinematicCharacterControllerOutput, &mut CharacterVelocity)>) {
+fn modify_character_controller_slopes(
+    mut characters: Query<(&KinematicCharacterControllerOutput, &mut CharacterVelocity)>
+) {
     /* apply translation back to velocity */
+    // note: we're only using the y-component of the velocity
 
-    for (output, mut vel) in outputs.iter_mut() {
-        if output.grounded {
-            vel.0.y = 0.;
-        }
+    for (output, mut c_vel) in characters.iter_mut() {
+        c_vel.0.y = output.effective_translation.y;
+        print!("tried {} got {}\n", output.desired_translation, output.effective_translation);
+
+        // if output.grounded {
+        //     print!("grounded\n");
+        // }
     }
 }
 
+/*
+fn update_sound_speed(
+    // music_controller: Query<&AudioSink, With<MyMusic>>, 
+    players_displayers: Query<(&AudioSink, &Sprite, &Velocity)>,
+) {
+    for (sink, _, vel) in players_displayers.iter() {
+        // so what exaxtly is the maximum velocity???????
+        // how is such a thing calculated
+        // todo: check if on the ground
+        sink.set_speed(0.2 + (vel.linvel.x.abs() / 300.0));
+        // todo: flip sprite
+    }
+}
+
+ */
 
 
 fn apply_swing(
     p1_q: Query<(Entity, &Transform), With<Player1Marker>>,
     p2_q: Query<(Entity, &Transform), With<Player2Marker>>,
-    players_q: Query<(&OneShot, &Direction)>,
-
+    mut players_q: Query<(&mut OneShot, &Direction)>,
     mut balls_q: Query<(&Transform, &mut Velocity, &mut FromPlayer)>,
     mut gizmos: Gizmos,
-    mut commands: Commands
 ) {
     let p1 = p1_q.single();
-    let p2 = p2_q.single();
+    let p2 = match p2_q.get_single() {
+        Ok(p2) => p2,
+        Err(_) => return
+    };
+
     let p1_to_p2 = p2.1.translation - p1.1.translation;
 
     for (e_player, translation, to_other) in [
         (p1.0, p1.1.translation, p1_to_p2), 
-        (p2.0, p1.1.translation, -p1_to_p2)
+        (p2.0, p2.1.translation, -p1_to_p2)
     ] {
-        if let Ok((_, pressed_direction)) = players_q.get(e_player) {
+        if let Ok((mut o_s, pressed_direction)) = players_q.get_mut(e_player) {
+
             let player_origin = translation.xy();
             let d: Vec2 = pressed_direction.into();
             let offset = d * 80.;
 
             /* box size: 100, 100 */
-
             gizmos.ray_2d(player_origin, offset, Color::DARK_GREEN);
             gizmos.rect_2d(player_origin + offset, 0., Vec2::new(100., 100.), Color::DARK_GREEN);
             let rect = Rect::from_center_size(player_origin + offset, Vec2::new(100., 100.));
@@ -635,7 +677,7 @@ fn apply_swing(
             /* 
                 player half width: 20
                 player half height: 50
-                hit velocity: 300
+                hit velocity: 300 / 400
                 */
 
             let foot = Vec2::new(
@@ -645,18 +687,19 @@ fn apply_swing(
 
             gizmos.circle_2d(foot, 10., Color::GREEN);
 
+            if o_s.used_up {continue}
+
             for (ball_transform, mut velocity, mut from_player) in balls_q.iter_mut() {
                 if rect.contains(
                     ball_transform.translation.xy()
                 ) {
                     from_player.0 = e_player;
-
-                    commands.entity(e_player).remove::<OneShot>();
+                    /* don't remove the component but set it so it can't be used again */
+                    o_s.used_up = true;
 
                     if *pressed_direction == Direction::Up {
                         velocity.linvel = 400. * Vec2::new(to_other.x.signum(), 0.);
-                    }
-                    else {
+                    } else {
                         velocity.linvel = (ball_transform.translation.xy() - foot).normalize_or_zero() * 300.;         
                     }
 
@@ -729,6 +772,7 @@ fn update_sensors(
 
     mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
     player_sensors: Query<(&PlayerSensor, Entity)>,
+    ground: Query<&Collider, Without<RigidBody>>,
 
     balls: Query<&FromPlayer>,
     players: Query<&InputHolder>,
@@ -737,6 +781,12 @@ fn update_sensors(
     mut log: EventWriter<LogEvent>,
     // mut commands: Commands
  ) {
+
+        // hmm
+    for c in &ground {
+        // println!("{:?}", c);
+    }
+
     for collision_event in collision_events.iter() {
   
         if let CollisionEvent::Started(entity_1, entity_2, _flags) = *collision_event {
@@ -755,11 +805,17 @@ fn update_sensors(
 
                     }
                 }
-                else if let Ok((_sensor, sensor_e)) = player_sensors.get(entity) {
+                else if let Ok((_sensor, _sensor_e)) = player_sensors.get(entity) {
                     if let Ok(_) = players.get(other_entity) {
                         
                     }
                 }
+                // check ground
+                if let Ok(_) = ground.get(entity) {
+                    // println!("")
+                    LogEvent("hit ground".into());
+                }
+
             }
          }
      }

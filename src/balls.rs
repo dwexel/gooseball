@@ -26,6 +26,8 @@ becuse they're the onees causing the collisions
 
 
 
+use std::time::Duration;
+
 use bevy::prelude::*;
 use super::components::*;
 use super::bundles::BallBundle;
@@ -107,10 +109,18 @@ pub fn drop_ball(
 }
 
 
-pub fn manage_timers(mut q: Query<&mut DropOnMeRate>, time: Res<Time>) {
-	let t = time.elapsed_seconds() / 60.;
-	// println!("{t}");
+pub fn manage_timers(
+	mut q: Query<&mut DropOnMeRate>, 
+	time: Res<Time>,
+) {
 
+	// let ts = time.elapsed_seconds().floor() as i32;
+
+	// if ts == 5 {
+	// 	for mut drop_rate in q.iter_mut() {
+	// 		drop_rate.0.set_duration(Duration::from_secs(2));
+	// 	}
+	// }
 }
 
 

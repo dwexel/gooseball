@@ -21,24 +21,24 @@ pub struct BuilderLine {
 
 //-------------------------------
 
-#[derive(Resource, PartialEq)]
-pub struct PlayerInfo {
-    pub players: u8,
-    pub balls: bool,
-    pub camera_system: bool,
-    pub show_log: bool
-}
+// #[derive(Resource, PartialEq)]
+// pub struct PlayerInfo {
+//     pub players: u8,
+//     pub balls: bool,
+//     pub camera_system: bool,
+//     pub show_log: bool
+// }
 
-impl Default for PlayerInfo {
-    fn default() -> Self {
-        Self {
-            players: 2, 
-            balls: false,
-            camera_system: false, 
-            show_log: true
-        }
-    }
-}
+// impl Default for PlayerInfo {
+//     fn default() -> Self {
+//         Self {
+//             players: 2, 
+//             balls: false,
+//             camera_system: false, 
+//             show_log: true
+//         }
+//     }
+// }
 
 #[derive(Resource, PartialEq)]
 pub struct Settings_balls (pub bool);
@@ -66,13 +66,13 @@ pub struct Settings_log (pub bool);
 
 
 
-#[allow(non_camel_case_types)]
-#[derive(Component)]
-pub struct InputMethod_wasd;
+// #[allow(non_camel_case_types)]
+// #[derive(Component)]
+// pub struct InputMethod_wasd;
 
-#[allow(non_camel_case_types)]
-#[derive(Component)]
-pub struct InputMethod_arrow;
+// #[allow(non_camel_case_types)]
+// #[derive(Component)]
+// pub struct InputMethod_arrow;
 
 
 
@@ -98,10 +98,16 @@ pub struct Player2Marker;
 
 
 #[derive(Component)]
+pub struct CharacterVelocity(pub Vec2);
+
+
+
+
+#[derive(Component)]
 pub struct DropOnMeRate(pub Timer);
 
-
-
+#[derive(Resource)]
+pub struct BallSetupTimer(pub Timer);
 
 
 #[derive(Resource)]
@@ -116,8 +122,16 @@ pub struct ThrowTimer(pub Timer);
 #[derive(Component)]
 pub struct TimeAdded(pub f32);
 
+
+// set to the last player that hit the ball
 #[derive(Component)]
 pub struct FromPlayer(pub Entity);
+
+
+// // set true if the ball can be hit
+// #[derive(Component)]
+// pub struct CanBeHit(pub bool);
+
 
 
 // is true if the entity has ever hit the ground
@@ -155,11 +169,17 @@ pub struct CameraTarget;
 
 
 #[derive(Component)]
-pub struct OneShot(pub Timer);
+pub struct OneShot {
+    pub timer: Timer,
+    pub used_up: bool
+}
 
 impl OneShot {
     pub fn from_seconds(duration: f32) -> Self {
-        Self(Timer::from_seconds(duration, TimerMode::Once))
+        Self {
+            timer: Timer::from_seconds(duration, TimerMode::Once),
+            used_up: false
+        }
     }
 }
 

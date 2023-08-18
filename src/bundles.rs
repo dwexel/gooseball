@@ -58,6 +58,7 @@ pub struct PlayerBundle {
 
     // mine
     pub drop_rate: DropOnMeRate,
+    pub char_vel: CharacterVelocity
 }
 
 #[allow(unused_parens)]
@@ -90,7 +91,8 @@ impl Default for PlayerBundle {
             settings: PlaybackSettings { 
                 mode: PlaybackMode::Loop, volume: Volume::new_relative(0.5), speed: 1.0, paused: false 
             },
-            drop_rate: DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
+            drop_rate: DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating)),
+            char_vel: CharacterVelocity(Vec2::ZERO)
         }
     }
 }
@@ -132,7 +134,7 @@ impl Default for BallBundle {
 			active: ActiveEvents::COLLISION_EVENTS,
 			velocity: default(),
 			transform: default(),
-			global_transform: default()
+			global_transform: default(),
 		}
 	}
 }
