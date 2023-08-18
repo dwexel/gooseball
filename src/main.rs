@@ -139,6 +139,7 @@ fn main() {
                 
                 // update camera
                 camera::camera_system,
+                camera::camera_system_2,
 
                 // get button input
                 (
@@ -170,10 +171,7 @@ fn main() {
             .run_if(in_state(AppState::InGame))
         )
         .add_systems(PostUpdate,    
-            (
-                update_remove_timers::<JumpTimer>,
-                reset_updated_flags.run_if(in_state(AppState::InGame))
-            )
+            reset_updated_flags.run_if(in_state(AppState::InGame))
         )
 
         // add physics setup
@@ -333,21 +331,6 @@ fn setup(
         transform: Transform::from_translation(Vec3::new(-150., 0., 0.)),
         ..default()
     });
-
-    let icon_handle = asset_server.load("icon.png");
-
-    commands.spawn(SpriteBundle {
-        texture: icon_handle.clone(),
-        // sprite: Sprite {
-        //     custom_size: Some(Vec2::new(200., 200.)), ..default()
-        // },
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..default()
-    });
-
-    
-    
-
 }
 
 
@@ -552,12 +535,13 @@ fn apply_input_system(
         Option<&mut OneShot>,
         &mut KinematicCharacterController,
         &Transform,
-        &mut CharacterVelocity
+        &mut CharacterVelocity,
+        &mut Sprite
 
     )>,
     rapier_context: Res<RapierContext>
 ) {
-    for (entity, input, o, mut controller, transform, mut c_vel) in players_q.iter_mut() {
+    for (entity, input, o, mut controller, transform, mut c_vel, mut sprite) in players_q.iter_mut() {
         let grav = -0.2;
         c_vel.0.y += grav;
 
@@ -595,6 +579,16 @@ fn apply_input_system(
             }
         }
 
+
+        /* flip */
+
+        // compare w/ epsilon?
+
+        if input.direction.x != 0. {
+            sprite.flip_x = input.direction.x < 0.;
+        }
+
+
         /* apply velocity to translation */
 
         // controller.translation = Some(time.delta_seconds() * 30. * Vec2::new(
@@ -606,6 +600,7 @@ fn apply_input_system(
             3. * input.direction.x,
             c_vel.0.y
         ));
+
 
     }
 }
@@ -619,7 +614,7 @@ fn modify_character_controller_slopes(
 
     for (output, mut c_vel) in characters.iter_mut() {
         c_vel.0.y = output.effective_translation.y;
-        print!("tried {} got {}\n", output.desired_translation, output.effective_translation);
+        // print!("tried {} got {}\n", output.desired_translation, output.effective_translation);
 
         // if output.grounded {
         //     print!("grounded\n");
@@ -684,11 +679,9 @@ fn apply_swing(
                 player_origin.x + d.x * 20.,
                 player_origin.y - 50.
             );
-
             gizmos.circle_2d(foot, 10., Color::GREEN);
 
             if o_s.used_up {continue}
-
             for (ball_transform, mut velocity, mut from_player) in balls_q.iter_mut() {
                 if rect.contains(
                     ball_transform.translation.xy()
@@ -815,7 +808,6 @@ fn update_sensors(
                     // println!("")
                     LogEvent("hit ground".into());
                 }
-
             }
          }
      }
