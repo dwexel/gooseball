@@ -56,6 +56,11 @@ pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>)
 		parent.spawn((
 			TextBundle { text: Text::from_section("log (showing)", text_style.clone()), ..default()},
 		));
+		parent.spawn((
+			TextBundle { text: Text::from_section("cam", text_style.clone()), ..default()},
+		));
+
+
 	});
 }
 
@@ -71,6 +76,7 @@ pub fn run_menu_system(
 	mut settings_balls: ResMut<Settings_balls>,
 	mut settings_players: ResMut<Settings_players>,
 	mut settings_log: ResMut<Settings_log>,
+	mut settings_camera_system: ResMut<Settings_camera_system>,
 
 	//
 	mut display: Query<&mut Visibility, With<LogTextDisplayer>>
@@ -140,7 +146,11 @@ pub fn run_menu_system(
 							"log (hiding)".to_string()
 						}
 					}
+				},
+				4 => {
+					settings_camera_system.0 = !settings_camera_system.0;
 				}
+
 				_ => {}
 			}
 		}

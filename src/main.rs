@@ -76,14 +76,56 @@ sound approaches
 how to manually set framrate?
 
 
+
+
+enum AnimationState {
+    Walking,
+    Hitting
+}
+
+
+
+
+
+
+animation components
+
+for each:
+    indices, timer
+    
+shared:
+    texture atlas, state
+
+
+
+commands.insert((
+    Animation(AnimationState::Walking, 2., 1..3),
+    Animation(AnimationState::Hitting, 2., 4..8),
+
+))
+
+
+enums with "tuple variants" won't help i don't think....
+or will it?
+
+ok...
+for stuff that won't change at game time, maybe i should let it be added with the commands
+
+
  */
 
+
+
+
+
 use bevy::math::Vec3Swizzles;
-use bevy::sprite::MaterialMesh2dBundle;
+use bevy::sprite::{MaterialMesh2dBundle, Material2d, Material2dPlugin};
+// use bevy::sprite::MaterialMesh2dBundle;
 use bevy::transform::TransformSystem;
 use bevy::{
-    asset::ChangeWatcher, 
     prelude::*, 
+    sprite::Anchor,
+    asset::ChangeWatcher, 
     utils::Duration, 
 };
 use bevy_rapier2d::prelude::{*, QueryFilter};
@@ -122,7 +164,9 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0).with_default_system_setup(false),
             RapierDebugRenderPlugin::default()
         ))
- 
+        .add_plugins(ShapePlugin)
+
+
         .add_systems(Startup, (
             setup,
             spawn_players_system,
@@ -138,8 +182,9 @@ fn main() {
                 builder::changed_system,
                 
                 // update camera
-                camera::camera_system,
-                camera::camera_system_2,
+                // camera::camera_system,
+                camera::camera_system.run_if(resource_exists_and_equals(Settings_camera_system(true))),
+                camera::camera_system_2.run_if(resource_exists_and_equals(Settings_camera_system(false))),
 
                 // get button input
                 (
@@ -166,6 +211,8 @@ fn main() {
                 pause_menu_button_system,
                 update_log_system,
                 // update_sound_speed
+
+                update_pie
 
             )
             .run_if(in_state(AppState::InGame))
@@ -234,6 +281,8 @@ fn main() {
         .insert_resource(Settings_players(2))
         .insert_resource(Settings_balls(true))
         .insert_resource(Settings_log(true))
+        .insert_resource(Settings_camera_system(false))
+
         .add_event::<LogEvent>()
         .run();
 }
@@ -245,8 +294,6 @@ struct CollectInput;
 struct ApplyInput;
 
 
-
-
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum AppState {
     #[default]
@@ -254,6 +301,8 @@ pub enum AppState {
     PauseMenu,
     Reset
 }
+
+
 
 const SCENE_FILE_PATH: &str = "main.scn.ron";
 // const BALL_SIZE: f32 = 20.;
@@ -268,7 +317,72 @@ const GRAVITY_SCALE: f32 = 5.;
 
 
 
+mod shapes {
+    // re-use previous bevy?
+    use bevy::prelude::*;
+    use bevy::render::render_resource::AsBindGroup;
+    use bevy::reflect::{TypeUuid, TypePath};
+    use bevy::sprite::{Material2d, Material2dPlugin};
+
+    // This is the struct that will be passed to your shader
+    #[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
+    #[uuid = "f690fdae-d598-45ab-8225-97e2a3f056e0"]
+    pub struct PieMaterial {
+        #[uniform(0)]
+        pub color: Color,
+        #[uniform(0)]
+        pub radius: f32,
+        #[uniform(0)]
+        pub percentage: f32
+    }
+
+    impl Default for PieMaterial {
+        fn default() -> Self {
+            Self {color: default(), radius: 0.5, percentage: 1.0}
+        }
+    }
+
+    impl Material2d for PieMaterial {
+        fn fragment_shader() -> bevy::render::render_resource::ShaderRef {
+            "custom_material.wgsl".into()
+        }
+    }
+
+    pub fn update_pie(
+        time: Res<Time>,
+        q: Query<&Handle<PieMaterial>>,
+        mut meshes: ResMut<Assets<PieMaterial>>
+    ) {
+        for mat_handle in q.iter() {
+            if let Some(mat) = meshes.get_mut(mat_handle) {
+                mat.percentage = (time.elapsed_seconds() % 5.0) / 5.0;
+                println!("{}", mat.percentage);
+            }
+        }
+    }
+    pub struct ShapePlugin;
+
+    impl Plugin for ShapePlugin {
+        fn build(&self, app: &mut App) {
+            app.add_plugins(Material2dPlugin::<PieMaterial>::default());
+        }
+    }
+}
+
+use shapes::{
+    ShapePlugin,
+    PieMaterial,
+    update_pie,
+};
+
+#[allow(unused)]
+mod animation;
+
+
+
 // ------------------ setup
+
+
 
 
 
@@ -276,7 +390,7 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>
+    mut materials: ResMut<Assets<PieMaterial>>
 ) {
     commands.spawn(DynamicSceneBundle {
         scene: asset_server.load(SCENE_FILE_PATH), ..default()
@@ -306,47 +420,56 @@ fn setup(
         ..default()
     });
 
-    // commands.spawn((
-    //     /* in group 2, collide with all */
-    //     CollisionGroups::new(Group::GROUP_1, Group::ALL),
-    //     PlayerSensor::default(),
-    //     Sensor,
-    //     Collider::ball(100.),
-    //     TransformBundle::from(Transform::from_xyz(100., 100., 0.)),
-    // ));
-
-    // /* spawn a pickup */
-    // commands.spawn((
-    //     /* in group 2, collide with all */
-    //     CollisionGroups::new(Group::GROUP_1, Group::ALL),
-    //     PlayerSensor {despawn_on_enter: true},
-    //     Sensor,
-    //     Collider::ball(50.),
-    //     TransformBundle::from(Transform::from_xyz(-250., 20., 0.)),
-    // ));
+    let mat_handle = materials.add(PieMaterial {
+        color: Color::PURPLE,
+        ..default()
+    });
 
     commands.spawn(MaterialMesh2dBundle {
-        mesh: meshes.add(shape::Circle::new(50.).into()).into(),
-        material: materials.add(ColorMaterial::from(Color::PURPLE)),
+        // mesh: meshes.add(shape::Circle::new(50.).into()).into(),
+        mesh: meshes.add(shape::Quad::new(Vec2::new(50., 50.)).into()).into(),
+        material: mat_handle.clone(),
         transform: Transform::from_translation(Vec3::new(-150., 0., 0.)),
         ..default()
     });
+
+
 }
 
 
+#[allow(unused)]
+#[derive(Component, Default)]
+enum AnimationState {
+    #[default]
+    Normal,
+    SwingSide,
+    SwingUp
+}
 
 fn spawn_players_system(
     mut commands: Commands, 
     settings: Res<Settings_players>, 
-    asset_server: Res<AssetServer>
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>> 
 ) {
-    let icon_handle = asset_server.load("goose2.png");
+    /*
+        goose png: each tile is is 237 by 140
+     */
+
+    let texture_handle = asset_server.load("goose-anim.png");
+    let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(237., 140.), 3, 1, None, None);
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
     commands.spawn(
         bundles::PlayerBundle {
             source: asset_server.load("Hat19.wav"),
-            texture: icon_handle.clone(),
-            transform: Transform::from_xyz(0., 0., 0.),
+            transform: Transform::from_xyz(-100., 0., 0.),            
+            texture: texture_atlas_handle.clone(),
+            sprite: TextureAtlasSprite {
+                index: 0, 
+                anchor: Anchor::Custom(Vec2::new(-0.25, 0.0)), 
+                ..default()
+            },
             ..default()
         }
     )
@@ -357,15 +480,20 @@ fn spawn_players_system(
 
     commands.spawn(
         bundles::PlayerBundle {
-            texture: icon_handle.clone(),
             transform: Transform::from_xyz(100., 0., 0.),
+            texture: texture_atlas_handle.clone(),
+            sprite: TextureAtlasSprite {
+                index: 0, 
+                anchor: Anchor::Custom(Vec2::new(-0.25, 0.0)), 
+                ..default()
+            },
             ..default()
         }
     )
     .insert(InputMapArrow)
     .insert(Player2Marker);
-}
 
+}
 
 
 /* query all RigidBodies and despawn them, then set gamestate back to in-game */
@@ -409,10 +537,6 @@ fn pause_menu_button_system(
     }
 }
 
-
-
-
-
     // good for analog input
 // note: could probably genericize this
 
@@ -421,10 +545,6 @@ struct InputMapWASD;
 
 #[derive(Component)]
 struct InputMapArrow;
-
-
-
-
 trait InputMap {
     const RIGHT: KeyCode;
     const UP: KeyCode;
@@ -462,7 +582,6 @@ fn get_input<T: Component + InputMap>(
     if keys.pressed(T::UP) {h.direction.y += 1.}
     if keys.pressed(T::LEFT) {h.direction.x -= 1.}
     if keys.pressed(T::DOWN) {h.direction.y -= 1.}
-
     if keys.just_pressed(T::JUMP) {h.jump = true}
     if keys.just_pressed(T::SWING) {h.swing = true}
 
@@ -523,6 +642,15 @@ impl From<&Direction> for Vec2 {
     }
 }
 
+// soo timer is the component that gets removed and added on,,,??
+// i just want to have code that is config , that speaks for itself,,
+// then later I can offset that if i'm rewriting it too much
+
+/* 
+fn get_frame_index(start_frame: usize, num_frames: f32, percent: f32) -> usize {
+    start_frame + (percent * num_frames).floor() as usize
+}
+ */
 
 
 fn apply_input_system(
@@ -531,27 +659,35 @@ fn apply_input_system(
     mut players_q: Query<(
         Entity, 
         &InputHolder,
-        
-        Option<&mut OneShot>,
         &mut KinematicCharacterController,
         &Transform,
         &mut CharacterVelocity,
-        &mut Sprite
 
+        // animation
+        Option<&mut OneShot>,
+        &mut TextureAtlasSprite
     )>,
     rapier_context: Res<RapierContext>
 ) {
-    for (entity, input, o, mut controller, transform, mut c_vel, mut sprite) in players_q.iter_mut() {
+    for (entity, input, mut controller, transform, mut c_vel, o, mut sprite) in players_q.iter_mut() {
         let grav = -0.2;
         c_vel.0.y += grav;
-
-        // c_vel.0.y = c_vel.0.y.clamp(-5., 5.); // terminal velocity
+        c_vel.0.y = c_vel.0.y.clamp(-10., 10.); // terminal velocity
 
         /* if swing is timed out then let it start again */
 
         if let Some(mut oneshot) = o {
-            if oneshot.timer.tick(time.delta()).just_finished() {
+            oneshot.timer.tick(time.delta());
+            if oneshot.timer.just_finished() {
                 commands.entity(entity).remove::<OneShot>();
+                sprite.index = 0;
+            }
+            else {
+                /* 
+                    number of frames = 2 
+                    starting frame = 1
+                */
+                sprite.index = 1 + (oneshot.timer.percent() * 2.).floor() as usize;
             }
         }
         else {
@@ -566,7 +702,6 @@ fn apply_input_system(
         }
 
         /* raycast to ground */
-
         if input.jump {
             if let Some((_entity, _toi)) = rapier_context.cast_ray(
                 transform.translation.xy(), 
@@ -575,33 +710,24 @@ fn apply_input_system(
                 false, 
                 QueryFilter::only_fixed()
             ) {
-                c_vel.0.y = 20.;
+                c_vel.0.y = 10.;
             }
         }
 
 
         /* flip */
-
-        // compare w/ epsilon?
-
         if input.direction.x != 0. {
             sprite.flip_x = input.direction.x < 0.;
+            /* default anchor (facing right) has negative x */
+            sprite.anchor = Anchor::Custom(Vec2::new(-1. * input.direction.x.signum() * 0.25, 0.0))
         }
 
-
         /* apply velocity to translation */
-
-        // controller.translation = Some(time.delta_seconds() * 30. * Vec2::new(
-        //     3. * input.direction.x,
-        //     c_vel.0.y
-        // ));
-
+        // tod0: apply delta
         controller.translation = Some(Vec2::new(
             3. * input.direction.x,
             c_vel.0.y
         ));
-
-
     }
 }
 
@@ -611,14 +737,8 @@ fn modify_character_controller_slopes(
 ) {
     /* apply translation back to velocity */
     // note: we're only using the y-component of the velocity
-
     for (output, mut c_vel) in characters.iter_mut() {
         c_vel.0.y = output.effective_translation.y;
-        // print!("tried {} got {}\n", output.desired_translation, output.effective_translation);
-
-        // if output.grounded {
-        //     print!("grounded\n");
-        // }
     }
 }
 
@@ -632,7 +752,6 @@ fn update_sound_speed(
         // how is such a thing calculated
         // todo: check if on the ground
         sink.set_speed(0.2 + (vel.linvel.x.abs() / 300.0));
-        // todo: flip sprite
     }
 }
 
@@ -649,7 +768,10 @@ fn apply_swing(
     let p1 = p1_q.single();
     let p2 = match p2_q.get_single() {
         Ok(p2) => p2,
-        Err(_) => return
+        Err(_) => {
+            info!("one player only!");
+            return;
+        }
     };
 
     let p1_to_p2 = p2.1.translation - p1.1.translation;
@@ -695,11 +817,6 @@ fn apply_swing(
                     } else {
                         velocity.linvel = (ball_transform.translation.xy() - foot).normalize_or_zero() * 300.;         
                     }
-
-                    // velocity.linvel == match *pressed_direction {
-                    //     Direction::Up => 300. * Vec2::new(to_other.signum(), 0.),
-                    //     Direction::Right => 300. * 
-                    // }
                 }
             }
         }
@@ -707,20 +824,6 @@ fn apply_swing(
 }
 
 
-
-
-
-fn update_remove_timers<T: RemoveAfter + Component>(
-    mut commands: Commands,
-    mut timer_query: Query<(Entity, &mut T)>,
-    time: Res<Time>
-) {
-    for (entity, mut timer) in timer_query.iter_mut() {
-        if timer.tick(time.delta_seconds()) {
-            commands.entity(entity).remove::<T>();
-        }
-    }
-}
 
 fn reset_updated_flags(
     mut sensors_q: Query<&mut BallSensor>

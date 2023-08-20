@@ -28,7 +28,8 @@ becuse they're the onees causing the collisions
 
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::math::Vec3Swizzles;
+use bevy::{prelude::*, gizmos};
 use super::components::*;
 use super::bundles::BallBundle;
 
@@ -78,9 +79,12 @@ pub fn drop_ball(
 	// player_query: Query<(Entity, &Transform), With<InputHolder>>,
 	mut player_q: Query<(Entity, &Transform, &mut DropOnMeRate)>,
 	time: Res<Time>,
+	mut gizmos: Gizmos
 ) {
 
 	for (e, transform, mut timer) in player_q.iter_mut() {
+		gizmos.circle_2d(transform.translation.xy(), 20., Color::LIME_GREEN);
+
 		if timer.0.tick(time.delta()).just_finished() {
 			let t = transform.translation;
 

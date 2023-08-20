@@ -1,45 +1,32 @@
 
-use bevy::prelude::*;
+use bevy::{prelude::*, math::Vec3Swizzles};
 use crate::components::*;
 
 
 pub fn camera_system(
 	mut q_camera: Query<(&mut Transform, &mut OrthographicProjection)>,
 	q_targets: Query<&Transform, (With<CameraTarget>, Without<OrthographicProjection>)>,
-	//
-	keys: Res<Input<KeyCode>>,
-	time: Res<Time>,
 ) {
 	let (mut camera_transform, mut projection) = q_camera.single_mut();
 
-
-	println!("{}", camera_transform.translation);
-	
-/* 
 	// if one target
 	if let Ok(target) = q_targets.get_single() {
-		camera.translation = target.translation;
+		camera_transform.translation = target.translation;
 		projection.scale = 1.;
 		return;
 	}
 
 	// convert to vec2?
-	let sum: Vec3 = q_targets.iter().map(|t| &t.translation).sum();  
+	let sum: Vec2 = q_targets.iter().map(|t| t.translation.xy()).sum();  
 	let count = q_targets.iter().count() as f32;
 
-	let centroid = Vec3::new(
-		sum.x / count,
-		sum.y / count,
-		0.
-	);
+	let cam = sum / count;
 
-	camera.translation = centroid;
- */
-
+	/* get centroid */
+	camera_transform.translation.x = cam.x;
+	camera_transform.translation.y = cam.y;
 
 	// -------------
-/* 
-	let cam = Vec2::new(camera.translation.x, camera.translation.y);
 
 	let furthest = match q_targets.iter().count() {
 		2 => {
@@ -61,7 +48,6 @@ pub fn camera_system(
 		.max((cam_to_target.y.abs() + padding) / window_y)
 		.max(1.);
 
- */
 }
 
 pub fn camera_system_2(

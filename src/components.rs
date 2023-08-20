@@ -53,6 +53,10 @@ pub struct Settings_log (pub bool);
 
 
 
+#[derive(Resource, PartialEq)]
+pub struct Settings_camera_system (pub bool);
+
+
 
 // -----------------
 

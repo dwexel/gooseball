@@ -30,10 +30,14 @@ use crate::GRAVITY_SCALE;
 #[derive(Bundle)]
 pub struct PlayerBundle {
     // sprite bundle
-    pub sprite: Sprite,
+    // pub sprite: Sprite,
+    // pub texture: Handle<Image>,
+
+    pub sprite: TextureAtlasSprite,
+    pub texture: Handle<TextureAtlas>,
+
     pub transform: Transform,
     pub global_transform: GlobalTransform,
-    pub texture: Handle<Image>,
     pub visibility: Visibility,
     pub computed_visibility: ComputedVisibility,
 
@@ -66,17 +70,26 @@ impl Default for PlayerBundle {
     fn default() -> Self {
         Self {
             sprite: default(),
+            // texture: DEFAULT_IMAGE_HANDLE.typed(),
+            texture: default(),
+
+
+
             transform: default(),
             global_transform: default(),
-            texture: DEFAULT_IMAGE_HANDLE.typed(),
             visibility: default(),
             computed_visibility: default(),
+
+            
             camera_target: default(),
             input_holder: default(),
             velocity: default(),
             rigid_body: RigidBody::KinematicVelocityBased,
             character_controller: KinematicCharacterController {
-                offset: CharacterLength::Absolute(0.1),
+                // not working
+                apply_impulse_to_dynamic_bodies: true,
+                // unless?
+                // offset: CharacterLength::Absolute(0.1),
                 ..default()
             },
 
