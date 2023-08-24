@@ -21,37 +21,15 @@ pub struct BuilderLine {
 
 //-------------------------------
 
-// #[derive(Resource, PartialEq)]
-// pub struct PlayerInfo {
-//     pub players: u8,
-//     pub balls: bool,
-//     pub camera_system: bool,
-//     pub show_log: bool
-// }
-
-// impl Default for PlayerInfo {
-//     fn default() -> Self {
-//         Self {
-//             players: 2, 
-//             balls: false,
-//             camera_system: false, 
-//             show_log: true
-//         }
-//     }
-// }
 
 #[derive(Resource, PartialEq)]
 pub struct Settings_balls (pub bool);
-
-
 
 #[derive(Resource, PartialEq)]
 pub struct Settings_players (pub u8);
 
 #[derive(Resource, PartialEq)]
 pub struct Settings_log (pub bool);
-
-
 
 #[derive(Resource, PartialEq)]
 pub struct Settings_camera_system (pub bool);
@@ -62,28 +40,17 @@ pub struct Settings_camera_system (pub bool);
 
 
 
-// #[derive(Component)]
-// pub enum InputMethod {
-//     WASD,
-//     ARROW
-// }
+#[derive(Component)]
+pub struct InputMapWASD;
+
+#[derive(Component)]
+pub struct InputMapArrow;
 
 
+// #[derive(Component, Reflect, Default, Clone)]
+// #[reflect(Component)]
 
-// #[allow(non_camel_case_types)]
-// #[derive(Component)]
-// pub struct InputMethod_wasd;
-
-// #[allow(non_camel_case_types)]
-// #[derive(Component)]
-// pub struct InputMethod_arrow;
-
-
-
-
-
-#[derive(Component, Reflect, Default, Clone)]
-#[reflect(Component)]
+#[derive(Component, Debug, Default, Clone)]
 pub struct InputHolder {
 	pub direction: Vec2,
 	pub jump: bool,
@@ -105,42 +72,18 @@ pub struct Player2Marker;
 pub struct CharacterVelocity(pub Vec2);
 
 
-
-
 #[derive(Component)]
 pub struct DropOnMeRate(pub Timer);
 
-#[derive(Resource)]
-pub struct BallSetupTimer(pub Timer);
-
-
-#[derive(Resource)]
-pub struct BallTimer(pub Timer);
-
-#[derive(Resource)]
-pub struct ThrowTimer(pub Timer);
-
-
-//------------------
 
 #[derive(Component)]
 pub struct TimeAdded(pub f32);
 
-
 // set to the last player that hit the ball
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct FromPlayer(pub Entity);
 
 
-// // set true if the ball can be hit
-// #[derive(Component)]
-// pub struct CanBeHit(pub bool);
-
-
-
-// is true if the entity has ever hit the ground
-#[derive(Component)]
-pub struct HasHitGround(pub bool);
 
 
 
@@ -186,6 +129,17 @@ impl OneShot {
         }
     }
 }
+
+
+#[allow(unused)]
+#[derive(Component, Default)]
+pub enum AnimationState {
+    #[default]
+    Normal,
+    SwingSide,
+    SwingUp
+}
+
 
 
 

@@ -61,7 +61,6 @@ pub struct PlayerBundle {
     pub settings: PlaybackSettings,
 
     // mine
-    pub drop_rate: DropOnMeRate,
     pub char_vel: CharacterVelocity
 }
 
@@ -72,15 +71,10 @@ impl Default for PlayerBundle {
             sprite: default(),
             // texture: DEFAULT_IMAGE_HANDLE.typed(),
             texture: default(),
-
-
-
             transform: default(),
             global_transform: default(),
             visibility: default(),
             computed_visibility: default(),
-
-            
             camera_target: default(),
             input_holder: default(),
             velocity: default(),
@@ -92,19 +86,17 @@ impl Default for PlayerBundle {
                 // offset: CharacterLength::Absolute(0.1),
                 ..default()
             },
-
-
             collider: Collider::capsule_y(30., 20.),
             locked_axes: LockedAxes::ROTATION_LOCKED,
             collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL),
-
             ball_sensor: default(),
-
             source: default(),
             settings: PlaybackSettings { 
-                mode: PlaybackMode::Loop, volume: Volume::new_relative(0.5), speed: 1.0, paused: false 
+                mode: PlaybackMode::Loop, 
+                volume: Volume::new_relative(0.5), 
+                speed: 1.0, 
+                paused: false 
             },
-            drop_rate: DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating)),
             char_vel: CharacterVelocity(Vec2::ZERO)
         }
     }
@@ -177,16 +169,21 @@ impl Default for PlayerSensorBundle {
 }
 
 
-/*
-    commands.spawn((
-        /* in group 2, collide with all */
-        CollisionGroups::new(Group::GROUP_2, Group::ALL),
-        PlayerSensor {despawn_on_enter: true},
-        Sensor,
-        Collider::ball(50.),
-        TransformBundle::from(Transform::from_xyz(-250., 20., 0.)),
-    ));
+#[derive(Bundle)]
+pub struct GroundBundle {
+    pub local: Transform,
+    pub global: GlobalTransform,
+    pub collider: Collider,
+    pub body: RigidBody
+}
 
- */
-
-
+impl Default for GroundBundle {
+    fn default() -> Self {
+        Self {
+            local: default(),
+            global: default(),
+            collider: default(),
+            body: RigidBody::Fixed
+        }
+    }
+}

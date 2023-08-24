@@ -674,6 +674,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_oddio"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b070453a2ad64829ab4c19a7f04532cc1b9dd80e933bc0e47f635dd5e47c75e0"
+dependencies = [
+ "bevy",
+ "bevy_math",
+ "cpal",
+ "oddio",
+ "parking_lot",
+]
+
+[[package]]
 name = "bevy_pbr"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1683,6 +1696,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42218cb640844e3872cc3c153dc975229e080a6c4733b34709ef445610550226"
 dependencies = [
  "bytemuck",
+ "mint",
  "serde",
 ]
 
@@ -1755,6 +1769,7 @@ name = "gooseball"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_oddio",
  "bevy_rapier2d",
 ]
 
@@ -2224,6 +2239,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mint"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
+
+[[package]]
 name = "mio"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2577,6 +2598,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f44155e7fb718d3cfddcf70690b2b51ac4412f347cd9e4fbe511abe9cd7b5f2"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "oddio"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f3379cc7e854d0b0d4a0e310f276faafc46896843b720efe4646faa1b0c734"
+dependencies = [
+ "mint",
 ]
 
 [[package]]

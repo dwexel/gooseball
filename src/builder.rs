@@ -12,6 +12,7 @@ pub fn added_system(
 		commands.entity(entity).insert((
 			TransformBundle::from(Transform::from_xyz(b.x, b.y, 0.)),
 			Collider::cuboid(b.w, b.h),
+			RigidBody::Fixed,
 		));
 	}
 

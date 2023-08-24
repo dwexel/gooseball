@@ -16,32 +16,24 @@ that would work pretty good for a very physics-based game. And might be easier t
 
 
 
-put collision-event-reader compoonents on balls and on players
-becuse they're the onees causing the collisions
 
-
+ok the idea is that balls drop at a spedicif time for both players
+	so if that continues I should make the timer a resource
 
 
  */
 
 
 
-use std::time::Duration;
-
-use bevy::math::Vec3Swizzles;
-use bevy::{prelude::*, gizmos};
+use bevy::{prelude::*};
 use super::components::*;
 use super::bundles::BallBundle;
+use super::shapes::PieMaterial;
+
 
 use super::{
-	DROP_HEIGHT
+	DROP_HEIGHT,
 };
-
-
-const THROW_VEL: f32 = 300.;
-const TOTAL_BALLS: usize = 2;
-
-
 
 // pub fn ball_thrower(
 // 	q_player: Query<&Transform, With<Player1Marker>>,
@@ -74,18 +66,16 @@ const TOTAL_BALLS: usize = 2;
 
 
 pub fn drop_ball(
-	mut commands: Commands, 
-	// mut timer: ResMut<BallTimer>,
-	// player_query: Query<(Entity, &Transform), With<InputHolder>>,
-	mut player_q: Query<(Entity, &Transform, &mut DropOnMeRate)>,
 	time: Res<Time>,
-	mut gizmos: Gizmos
+	mut commands: Commands, 
+	timer_q: Query<&DropOnMeRate>,
+	mut player_q: Query<(Entity, &Transform), With<InputHolder>>,
 ) {
+	/* only use one timer right now */
+	let timer = timer_q.single();
 
-	for (e, transform, mut timer) in player_q.iter_mut() {
-		gizmos.circle_2d(transform.translation.xy(), 20., Color::LIME_GREEN);
-
-		if timer.0.tick(time.delta()).just_finished() {
+	for (e, transform) in player_q.iter_mut() {
+		if timer.0.just_finished() {
 			let t = transform.translation;
 
 			commands.spawn(BallBundle {
@@ -94,39 +84,29 @@ pub fn drop_ball(
 			})
 			.insert(FromPlayer(e))
 			.insert(TimeAdded(time.elapsed_seconds()));
+
+			// otherwise it'll spawn abunch???????
+			// break;
 		}
 	}
-
-	// // update ball timer
-	// if timer.0.tick(time.delta()).just_finished() {
-	// 	for (entity, transform) in player_query.iter() {
-	// 		let t = transform.translation;
-
-	// 		commands.spawn(BallBundle {
-	// 			transform: Transform::from_xyz(t.x, t.y + DROP_HEIGHT, 0.0),
-	// 			..default()
-	// 		})
-	// 		.insert(FromPlayer(entity))
-	// 		.insert(TimeAdded(time.elapsed_seconds()));
-	// 	}
-	// }
 }
 
 
-pub fn manage_timers(
-	mut q: Query<&mut DropOnMeRate>, 
+pub fn update_pie(
 	time: Res<Time>,
+	mut q_time: Query<&mut DropOnMeRate>,
+	q: Query<&Handle<PieMaterial>>,
+	mut meshes: ResMut<Assets<PieMaterial>>
 ) {
+	let mut timer = q_time.single_mut();
+	timer.0.tick(time.delta());
 
-	// let ts = time.elapsed_seconds().floor() as i32;
-
-	// if ts == 5 {
-	// 	for mut drop_rate in q.iter_mut() {
-	// 		drop_rate.0.set_duration(Duration::from_secs(2));
-	// 	}
-	// }
+	for mat_handle in q.iter() {
+		if let Some(mat) = meshes.get_mut(mat_handle) {
+			mat.percentage = timer.0.percent();			
+		}
+	}
 }
-
 
 pub fn manage_balls(
 	mut commands: Commands, 
@@ -144,11 +124,3 @@ pub fn manage_balls(
 		commands.entity(ball_times[0].0).despawn();
 	}
 }
-
-
-
-
-// ------------------------------------------------------
-
-
-

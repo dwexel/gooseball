@@ -112,22 +112,38 @@ ok...
 for stuff that won't change at game time, maybe i should let it be added with the commands
 
 
+refactoring idea:
+    run a system that stores a "direction-to-other" component in each player before 
+    applying input stuff
+
  */
 
 
-
-
-
-use bevy::math::Vec3Swizzles;
-use bevy::sprite::{MaterialMesh2dBundle, Material2d, Material2dPlugin};
-// use bevy::sprite::MaterialMesh2dBundle;
-use bevy::transform::TransformSystem;
 use bevy::{
     prelude::*, 
     sprite::Anchor,
     asset::ChangeWatcher, 
     utils::Duration, 
 };
+
+
+use bevy::math::{Vec3Swizzles, Vec2Swizzles};
+use bevy::sprite::{MaterialMesh2dBundle};
+use bevy::transform::TransformSystem;
+
+
+use bevy_oddio::oddio::Sample;
+use bevy_oddio::builtins::{
+    stream
+};
+use bevy_oddio::{AudioSource, AudioApp};
+use bevy_oddio::{
+    // AudioApp,
+    AudioPlugin
+};
+use bevy_oddio::Audio;
+use bevy_oddio::output::AudioSink;
+
 use bevy_rapier2d::prelude::{*, QueryFilter};
 
 
@@ -162,9 +178,12 @@ fn main() {
         )
         .add_plugins((
             RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0).with_default_system_setup(false),
-            RapierDebugRenderPlugin::default()
+            RapierDebugRenderPlugin::default(),
+            ShapePlugin,
+            AudioPlugin::default()
         ))
-        .add_plugins(ShapePlugin)
+
+        .add_audio_source::<Sample, stream::Stream<Sample>>()
 
 
         .add_systems(Startup, (
@@ -199,21 +218,20 @@ fn main() {
                 .in_set(ApplyInput),
                 
                 (
-                    balls::manage_timers, 
+                    balls::update_pie,
                     balls::drop_ball
                 )
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
                 modify_character_controller_slopes,
                 balls::manage_balls,
-                // update components that need to detect collisions
+
+                /*
+                  update components that need to detect collisions
+                */
                 update_sensors,
                 pause_menu_button_system,
-                update_log_system,
-                // update_sound_speed
-
-                update_pie
-
+                update_log_system,                
             )
             .run_if(in_state(AppState::InGame))
         )
@@ -273,9 +291,6 @@ fn main() {
 
         .add_state::<AppState>()
 
-        .insert_resource(ThrowTimer(Timer::from_seconds(3., TimerMode::Repeating)))
-        .insert_resource(BallTimer(Timer::from_seconds(BALL_TIME, TimerMode::Repeating)))
-        .insert_resource(BallSetupTimer(Timer::from_seconds(5., TimerMode::Repeating)))
 
         .insert_resource(LogText(Vec::new()))
         .insert_resource(Settings_players(2))
@@ -348,18 +363,6 @@ mod shapes {
         }
     }
 
-    pub fn update_pie(
-        time: Res<Time>,
-        q: Query<&Handle<PieMaterial>>,
-        mut meshes: ResMut<Assets<PieMaterial>>
-    ) {
-        for mat_handle in q.iter() {
-            if let Some(mat) = meshes.get_mut(mat_handle) {
-                mat.percentage = (time.elapsed_seconds() % 5.0) / 5.0;
-                println!("{}", mat.percentage);
-            }
-        }
-    }
     pub struct ShapePlugin;
 
     impl Plugin for ShapePlugin {
@@ -372,11 +375,23 @@ mod shapes {
 use shapes::{
     ShapePlugin,
     PieMaterial,
-    update_pie,
 };
 
 #[allow(unused)]
 mod animation;
+
+
+
+
+/* 
+    the thing that handle points to has to implement 
+        type uuid
+        type path
+        copy
+    
+     */
+
+// struct TapSound(Handle<Audio<FrameType>>);
 
 
 
@@ -390,7 +405,8 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<PieMaterial>>
+    mut materials: ResMut<Assets<PieMaterial>>,
+
 ) {
     commands.spawn(DynamicSceneBundle {
         scene: asset_server.load(SCENE_FILE_PATH), ..default()
@@ -420,61 +436,75 @@ fn setup(
         ..default()
     });
 
+    
     let mat_handle = materials.add(PieMaterial {
         color: Color::PURPLE,
         ..default()
     });
 
     commands.spawn(MaterialMesh2dBundle {
-        // mesh: meshes.add(shape::Circle::new(50.).into()).into(),
         mesh: meshes.add(shape::Quad::new(Vec2::new(50., 50.)).into()).into(),
         material: mat_handle.clone(),
         transform: Transform::from_translation(Vec3::new(-150., 0., 0.)),
         ..default()
     });
 
-
+    commands.spawn(
+        DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
+    );
 }
 
 
-#[allow(unused)]
-#[derive(Component, Default)]
-enum AnimationState {
-    #[default]
-    Normal,
-    SwingSide,
-    SwingUp
-}
 
 fn spawn_players_system(
     mut commands: Commands, 
     settings: Res<Settings_players>, 
     asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>> 
+    
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    mut audio: ResMut<Audio<Sample, stream::Stream<Sample>>>
 ) {
     /*
-        goose png: each tile is is 237 by 140
+        goose png: each tile is is 237 by 201
+        5 tiles
      */
 
-    let texture_handle = asset_server.load("goose-anim.png");
-    let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(237., 140.), 3, 1, None, None);
+    let texture_handle = asset_server.load("combined.png");
+    let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(237., 201.), 5, 1, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
+
+
+
+    /* audio */
+
+    let audio_handle: Handle<stream::Stream<Sample>> = asset_server.load("hat19.wav");
+
+    let audiosink_handle: Handle<AudioSink<stream::Stream<Sample>>> = audio.play(
+        audio_handle, 
+        stream::Settings::new(10, 100)
+    );
+
+
+    /*
+        default anchor is -0.19, -0.25
+     */
 
     commands.spawn(
         bundles::PlayerBundle {
-            source: asset_server.load("Hat19.wav"),
             transform: Transform::from_xyz(-100., 0., 0.),            
             texture: texture_atlas_handle.clone(),
             sprite: TextureAtlasSprite {
                 index: 0, 
-                anchor: Anchor::Custom(Vec2::new(-0.25, 0.0)), 
+                anchor: Anchor::Custom(Vec2::new(-0.19, -0.25)), 
                 ..default()
             },
             ..default()
         }
     )
+    .insert(AnimationState::Normal)
     .insert(InputMapWASD)
     .insert(Player1Marker);
+
 
     if settings.0 != 2 {return}
 
@@ -490,6 +520,7 @@ fn spawn_players_system(
             ..default()
         }
     )
+    .insert(AnimationState::Normal)
     .insert(InputMapArrow)
     .insert(Player2Marker);
 
@@ -537,14 +568,6 @@ fn pause_menu_button_system(
     }
 }
 
-    // good for analog input
-// note: could probably genericize this
-
-#[derive(Component)]
-struct InputMapWASD;
-
-#[derive(Component)]
-struct InputMapArrow;
 trait InputMap {
     const RIGHT: KeyCode;
     const UP: KeyCode;
@@ -594,7 +617,6 @@ fn get_input<T: Component + InputMap>(
     }
 }
 
-
 #[derive(Clone, Copy, Component, Debug, PartialEq)]
 enum Direction {
     Right,
@@ -603,7 +625,6 @@ enum Direction {
     Down
 }
 
-#[allow(unused)]
 impl TryFrom<Vec2> for Direction {
     // todo: check 0 with epsilon
     type Error = &'static str;
@@ -642,16 +663,10 @@ impl From<&Direction> for Vec2 {
     }
 }
 
-// soo timer is the component that gets removed and added on,,,??
-// i just want to have code that is config , that speaks for itself,,
-// then later I can offset that if i'm rewriting it too much
 
-/* 
 fn get_frame_index(start_frame: usize, num_frames: f32, percent: f32) -> usize {
     start_frame + (percent * num_frames).floor() as usize
 }
- */
-
 
 fn apply_input_system(
     time: Res<Time>,
@@ -662,42 +677,55 @@ fn apply_input_system(
         &mut KinematicCharacterController,
         &Transform,
         &mut CharacterVelocity,
-
-        // animation
         Option<&mut OneShot>,
+        Option<&Direction>,
         &mut TextureAtlasSprite
     )>,
     rapier_context: Res<RapierContext>
 ) {
-    for (entity, input, mut controller, transform, mut c_vel, o, mut sprite) in players_q.iter_mut() {
+    for (e, input, mut controller, transform, mut c_vel, o, d, mut sprite) in players_q.iter_mut() {
         let grav = -0.2;
         c_vel.0.y += grav;
         c_vel.0.y = c_vel.0.y.clamp(-10., 10.); // terminal velocity
 
         /* if swing is timed out then let it start again */
-
+    
         if let Some(mut oneshot) = o {
             oneshot.timer.tick(time.delta());
             if oneshot.timer.just_finished() {
-                commands.entity(entity).remove::<OneShot>();
+                commands.entity(e).remove::<OneShot>();
+
+                // default index
                 sprite.index = 0;
             }
             else {
-                /* 
-                    number of frames = 2 
-                    starting frame = 1
-                */
-                sprite.index = 1 + (oneshot.timer.percent() * 2.).floor() as usize;
-            }
+                sprite.index = match d {
+                    Some(Direction::Up) => 
+                        get_frame_index(1, 2.0, oneshot.timer.percent()),
+                    Some(Direction::Right) | Some(Direction::Left) => 
+                        get_frame_index(3, 2.0, oneshot.timer.percent()),
+                    _ => 0
+                }
+            }    
         }
         else {
             if let Ok(dir) = Direction::try_from(input.direction) {
-                commands.entity(entity).insert(dir);
+                commands.entity(e).insert(dir);
             }
+
+            /* get input */
+
             if input.swing {
-                commands.entity(entity).insert(
+                commands.entity(e).insert(
                     OneShot::from_seconds(0.5),
                 );
+            }
+
+            /* flip sprite if not animating */
+
+            if input.direction.x != 0. {
+                sprite.flip_x = input.direction.x < 0.;
+                sprite.anchor = Anchor::Custom(Vec2::new(input.direction.x.signum() * -0.19, -0.25))
             }
         }
 
@@ -714,16 +742,8 @@ fn apply_input_system(
             }
         }
 
-
-        /* flip */
-        if input.direction.x != 0. {
-            sprite.flip_x = input.direction.x < 0.;
-            /* default anchor (facing right) has negative x */
-            sprite.anchor = Anchor::Custom(Vec2::new(-1. * input.direction.x.signum() * 0.25, 0.0))
-        }
-
         /* apply velocity to translation */
-        // tod0: apply delta
+        // todo: apply delta
         controller.translation = Some(Vec2::new(
             3. * input.direction.x,
             c_vel.0.y
@@ -731,37 +751,49 @@ fn apply_input_system(
     }
 }
 
+
+
+
 /* Read the character controller collisions stored in the character controller’s output. */
 fn modify_character_controller_slopes(
-    mut characters: Query<(&KinematicCharacterControllerOutput, &mut CharacterVelocity)>
+    mut characters: Query<(
+        &KinematicCharacterControllerOutput, 
+        &mut CharacterVelocity,
+   )>
 ) {
-    /* apply translation back to velocity */
-    // note: we're only using the y-component of the velocity
+    /* 
+        apply translation back to velocity
+        ok... 
+    */
+    
     for (output, mut c_vel) in characters.iter_mut() {
         c_vel.0.y = output.effective_translation.y;
+
+        let effective_vel = output.effective_translation.xy();
+        let effective_speed = effective_vel.x.abs();
+
+        // if let Some(sink) = sink {
+        //     sink.set_speed(0.2 + (effective_speed / 300.0));
+        //     sink.toggle()
+        // }
     }
 }
 
 /*
-fn update_sound_speed(
-    // music_controller: Query<&AudioSink, With<MyMusic>>, 
-    players_displayers: Query<(&AudioSink, &Sprite, &Velocity)>,
-) {
-    for (sink, _, vel) in players_displayers.iter() {
-        // so what exaxtly is the maximum velocity???????
-        // how is such a thing calculated
-        // todo: check if on the ground
-        sink.set_speed(0.2 + (vel.linvel.x.abs() / 300.0));
-    }
-}
+    should I put all sprite flips in this system?
 
+    this runs on;y when the swing is animating
  */
-
 
 fn apply_swing(
     p1_q: Query<(Entity, &Transform), With<Player1Marker>>,
     p2_q: Query<(Entity, &Transform), With<Player2Marker>>,
-    mut players_q: Query<(&mut OneShot, &Direction)>,
+    /* query for additional components */
+    mut players_q: Query<(
+        &mut OneShot, 
+        &Direction,
+        &mut TextureAtlasSprite
+    )>,
     mut balls_q: Query<(&Transform, &mut Velocity, &mut FromPlayer)>,
     mut gizmos: Gizmos,
 ) {
@@ -780,7 +812,7 @@ fn apply_swing(
         (p1.0, p1.1.translation, p1_to_p2), 
         (p2.0, p2.1.translation, -p1_to_p2)
     ] {
-        if let Ok((mut o_s, pressed_direction)) = players_q.get_mut(e_player) {
+        if let Ok((mut o_s, pressed_direction, mut sprite)) = players_q.get_mut(e_player) {
 
             let player_origin = translation.xy();
             let d: Vec2 = pressed_direction.into();
@@ -803,12 +835,22 @@ fn apply_swing(
             );
             gizmos.circle_2d(foot, 10., Color::GREEN);
 
+
+            /* flip sprite based on other's position */
+            if *pressed_direction == Direction::Up {
+                sprite.flip_x = to_other.x < 0.;
+            }
+
+
+            /* if swing-action is used up, don't process anymore */
             if o_s.used_up {continue}
+
             for (ball_transform, mut velocity, mut from_player) in balls_q.iter_mut() {
                 if rect.contains(
                     ball_transform.translation.xy()
                 ) {
                     from_player.0 = e_player;
+
                     /* don't remove the component but set it so it can't be used again */
                     o_s.used_up = true;
 
@@ -862,56 +904,59 @@ fn update_log_system(
     }
 }
 
+/* so collider without rigidbody is available in the system,,,
+    but it's not comin gup in the ocllisions list
+
+ */
+
 
 fn update_sensors(
     mut collision_events: EventReader<CollisionEvent>,
+    //
+    // mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
+    // player_sensors: Query<(&PlayerSensor, Entity)>,
+    //
 
-    mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
-    player_sensors: Query<(&PlayerSensor, Entity)>,
-    ground: Query<&Collider, Without<RigidBody>>,
-
+    ground: Query<&RigidBody>,
     balls: Query<&FromPlayer>,
     players: Query<&InputHolder>,
-
-
     mut log: EventWriter<LogEvent>,
-    // mut commands: Commands
  ) {
 
-        // hmm
-    for c in &ground {
-        // println!("{:?}", c);
-    }
-
     for collision_event in collision_events.iter() {
-  
-        if let CollisionEvent::Started(entity_1, entity_2, _flags) = *collision_event {
+        if let CollisionEvent::Started(e_1, e_2, _flags) = *collision_event {
+            for (entity, other_entity) in [(e_1, e_2), (e_2, e_1)] {
 
-            // for each entity
-            for (entity, other_entity) in [(entity_1, entity_2), (entity_2, entity_1)] {
-                // check if is sensor first, then if other is required type 
-                if let Ok((mut sensor, _)) = ball_sensors.get_mut(entity) {
-                    if let Ok(_from_player) = balls.get(other_entity) {
-
-                        // ball hit
-                        sensor.hit_on_last_update = true;
-                        log.send(
-                            LogEvent(format!("ball sensor: {:?} hit from: {:?}\n", entity, other_entity))
-                        );
-
-                    }
-                }
-                else if let Ok((_sensor, _sensor_e)) = player_sensors.get(entity) {
-                    if let Ok(_) = players.get(other_entity) {
-                        
-                    }
-                }
-                // check ground
-                if let Ok(_) = ground.get(entity) {
-                    // println!("")
-                    LogEvent("hit ground".into());
+                // if rigidbody is static/fixed then...
+                if let Ok(RigidBody::Fixed) = ground.get(entity) {
+                    log.send(
+                        LogEvent(format!("{:?} {:?} {:?}\n", entity, balls.get(other_entity), players.get(other_entity)))
+                    );
                 }
             }
-         }
-     }
- }
+        }
+    }
+
+
+    // for collision_event in collision_events.iter() {
+    //     if let CollisionEvent::Started(entity_1, entity_2, _flags) = *collision_event {
+    //         /* for each entity check if is sensor first, then if other is required type */
+    //         for (entity, other_entity) in [(entity_1, entity_2), (entity_2, entity_1)] {
+
+    //             // if let Ok((mut sensor, _)) = ball_sensors.get_mut(entity) {
+    //             //     if let Ok(_from_player) = balls.get(other_entity) {
+    //             //         // ball hit
+    //             //         sensor.hit_on_last_update = true;
+    //             //         log.send(
+    //             //             LogEvent(format!("ball sensor: {:?} hit from: {:?}\n", entity, other_entity))
+    //             //         );
+    //             //     }
+    //             // }
+    //             // else if let Ok((_sensor, _sensor_e)) = player_sensors.get(entity) {
+    //             //     if let Ok(_) = players.get(other_entity) {
+    //             //     }
+    //             // }
+    //         }
+    //     }
+    // }
+}
