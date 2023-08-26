@@ -70,6 +70,7 @@ pub fn drop_ball(
 	mut commands: Commands, 
 	timer_q: Query<&DropOnMeRate>,
 	mut player_q: Query<(Entity, &Transform), With<InputHolder>>,
+	asset_server: Res<AssetServer>
 ) {
 	/* only use one timer right now */
 	let timer = timer_q.single();
@@ -80,6 +81,17 @@ pub fn drop_ball(
 
 			commands.spawn(BallBundle {
 				transform: Transform::from_xyz(t.x, t.y + DROP_HEIGHT, 0.0),
+				sprite: Sprite {
+					color: Color::rgba(0.0, 0.0, 0.5, 1.0),
+					// custom_size: Some(Vec2::splat(50.)),
+					..default()
+				},
+				texture: (|| {
+					let h = asset_server.get_handle("icon.png");
+					println!("{h:?}");
+					h
+				})(),
+
 				..default()
 			})
 			.insert(FromPlayer(e))

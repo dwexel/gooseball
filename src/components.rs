@@ -39,6 +39,16 @@ pub struct Settings_camera_system (pub bool);
 // -----------------
 
 
+#[derive(Resource)]
+pub struct BallTexture(pub Handle<Image>);
+
+
+
+
+
+//------------------------------------
+
+
 
 #[derive(Component)]
 pub struct InputMapWASD;
@@ -84,7 +94,15 @@ pub struct TimeAdded(pub f32);
 pub struct FromPlayer(pub Entity);
 
 
+#[derive(Component)]
+pub struct HasTouchedGround;
 
+
+#[derive(Component)]
+pub struct HitByBall;
+
+
+//-----------------------------------------------------
 
 
 

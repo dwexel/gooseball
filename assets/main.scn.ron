@@ -42,7 +42,7 @@
 					]
 		)}),
 		5: (components: { "gooseball::components::BuilderBlock": (
-					x: -300.,
+					x: -500.,
 					y: 80.,
 					w: 200.,
 					h: 10.,

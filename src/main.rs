@@ -1,49 +1,34 @@
 /*
 
 
-with the paddle swing
--- how long does it take to reach the apex where it hits?
--- how long does it take until you can swing again
-
-player radius: 50
-bat length: 40
-ball radius: 20
-
-
-
-
-
-todo:
-make a class for "input map" / "keybinds" 
-that you can pass to a generic system
-
-
 
 sensor classes
 -- make sure that the system that updates the sensors gets run before the system that reads them
 -- also could you have one that uses genrics?
 
+"closeness to ground" component
+
 
 
 
 
 todo:
-use the css stuff to add log elements rather than pushing strings...
+-- use the css stuff to add log elements rather than pushing strings...
 
 
 audio feebback for the player speed
 (like footsteps get faster)
 
-"closeness to ground" compnent
 
 
 
-kinematic player vs. dynamc player
+
+kinematic player vs. dynamic player
 -- with dynamic: i should put in linear damping on it if there's no direction being pressed down
 
 
 so an animation has 2 separate things: one, when it's done, and two, when it's ready to be repeated
-/
+
 
 
 
@@ -76,18 +61,6 @@ sound approaches
 how to manually set framrate?
 
 
-
-
-enum AnimationState {
-    Walking,
-    Hitting
-}
-
-
-
-
-
-
 animation components
 
 for each:
@@ -98,15 +71,6 @@ shared:
 
 
 
-commands.insert((
-    Animation(AnimationState::Walking, 2., 1..3),
-    Animation(AnimationState::Hitting, 2., 4..8),
-
-))
-
-
-enums with "tuple variants" won't help i don't think....
-or will it?
 
 ok...
 for stuff that won't change at game time, maybe i should let it be added with the commands
@@ -117,6 +81,29 @@ refactoring idea:
     applying input stuff
 
  */
+
+/* 
+    the thing that handle points to has to implement 
+        type uuid
+        type path
+        copy
+    
+     */
+
+
+/*
+ok so,
+when are the actual collision event being generated? before or after "update" schedule?
+when they're generated != when they're read
+
+
+
+
+
+ */
+
+
+
 
 
 use bevy::{
@@ -155,6 +142,7 @@ mod builder;
 mod bundles;
 mod camera;
 
+use bevy_rapier2d::rapier::prelude::CollisionEventFlags;
 use bundles::PlayerSensorBundle;
 use components::*;
 
@@ -191,7 +179,12 @@ fn main() {
             spawn_players_system,
             menu::setup_menu_system
         ))
+        
+        .add_systems(PreUpdate, update_sensors)
+        
         .configure_sets(Update, (CollectInput, ApplyInput).chain())
+
+
         .add_systems(Update,
             (
                 bevy::window::close_on_esc,
@@ -224,20 +217,26 @@ fn main() {
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
                 modify_character_controller_slopes,
-                balls::manage_balls,
 
                 /*
-                  update components that need to detect collisions
+                    this system despawns balls!
                 */
-                update_sensors,
+                balls::manage_balls,
+
                 pause_menu_button_system,
-                update_log_system,                
+                update_log_system,             
+                update_balls_visuals,
+
+                take_damage
+
             )
             .run_if(in_state(AppState::InGame))
         )
-        .add_systems(PostUpdate,    
+
+        .add_systems(PostUpdate, (
+            // balls::manage_balls,
             reset_updated_flags.run_if(in_state(AppState::InGame))
-        )
+        ))
 
         // add physics setup
         .configure_sets(PostUpdate,
@@ -326,7 +325,7 @@ const SCENE_FILE_PATH: &str = "main.scn.ron";
 // const PADDLE_DISTANCE: f32 = 100.;
 const DROP_HEIGHT: f32 = 200.;
 // const ACC: f32 = 16.;
-const BALL_TIME: f32 = 2.;
+// const BALL_TIME: f32 = 2.;
 const GRAVITY_SCALE: f32 = 5.;
 // const JUMP_IMPULSE: f32 = 100.;
 
@@ -377,21 +376,7 @@ use shapes::{
     PieMaterial,
 };
 
-#[allow(unused)]
-mod animation;
 
-
-
-
-/* 
-    the thing that handle points to has to implement 
-        type uuid
-        type path
-        copy
-    
-     */
-
-// struct TapSound(Handle<Audio<FrameType>>);
 
 
 
@@ -422,13 +407,6 @@ fn setup(
         LogTextDisplayer
     ));
 
-/*      commands.spawn((
-        BallSensor::default(),
-        Sensor,
-        Collider::ball(100.),
-        TransformBundle::from(Transform::from_xyz(100., 100., 0.)),
-    ));
- */
 
     commands.spawn(PlayerSensorBundle {
         player_sensor: PlayerSensor { despawn_on_enter: true },
@@ -452,6 +430,12 @@ fn setup(
     commands.spawn(
         DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
     );
+
+    // don't need to. use this in a system yet
+    commands.insert_resource(BallTexture(
+        asset_server.load("icon.png")
+    ));
+
 }
 
 
@@ -462,32 +446,18 @@ fn spawn_players_system(
     asset_server: Res<AssetServer>,
     
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut audio: ResMut<Audio<Sample, stream::Stream<Sample>>>
 ) {
     /*
         goose png: each tile is is 237 by 201
         5 tiles
+
+                default anchor is -0.19, -0.25
+
      */
 
     let texture_handle = asset_server.load("combined.png");
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(237., 201.), 5, 1, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-
-
-
-    /* audio */
-
-    let audio_handle: Handle<stream::Stream<Sample>> = asset_server.load("hat19.wav");
-
-    let audiosink_handle: Handle<AudioSink<stream::Stream<Sample>>> = audio.play(
-        audio_handle, 
-        stream::Settings::new(10, 100)
-    );
-
-
-    /*
-        default anchor is -0.19, -0.25
-     */
 
     commands.spawn(
         bundles::PlayerBundle {
@@ -637,17 +607,9 @@ impl TryFrom<Vec2> for Direction {
         }
         let abs = value.abs();
         if abs.x >= abs.y {
-            if value.x >= 0. {
-                Ok(Self::Right)
-            } else {
-                Ok(Self::Left)
-            }
+            if value.x >= 0. { Ok(Self::Right) } else { Ok(Self::Left) }
         } else {
-            if value.y >= 0. {
-                Ok(Self::Up)
-            } else {
-                Ok(Self::Down)
-            }
+            if value.y >= 0. { Ok(Self::Up) } else { Ok(Self::Down) }
         }        
     }
 }
@@ -759,29 +721,30 @@ fn modify_character_controller_slopes(
     mut characters: Query<(
         &KinematicCharacterControllerOutput, 
         &mut CharacterVelocity,
-   )>
+   )>,
+
+   mut q_balls: Query<&mut Velocity, With<FromPlayer>>
 ) {
-    /* 
-        apply translation back to velocity
-        ok... 
-    */
+    /* apply translation back to velocity */
     
     for (output, mut c_vel) in characters.iter_mut() {
         c_vel.0.y = output.effective_translation.y;
 
-        let effective_vel = output.effective_translation.xy();
-        let effective_speed = effective_vel.x.abs();
+        // let effective_vel = output.effective_translation.xy();
+        // let effective_speed = effective_vel.x.abs();
+        // update sound
 
-        // if let Some(sink) = sink {
-        //     sink.set_speed(0.2 + (effective_speed / 300.0));
-        //     sink.toggle()
-        // }
+        let impact = output.desired_translation.xy() - output.effective_translation.xy();
+
+        for collision in output.collisions.iter() {
+            if let Ok(mut velocity) = q_balls.get_mut(collision.entity) {
+                velocity.linvel += impact;
+            }
+        }
     }
 }
 
 /*
-    should I put all sprite flips in this system?
-
     this runs on;y when the swing is animating
  */
 
@@ -833,14 +796,13 @@ fn apply_swing(
                 player_origin.x + d.x * 20.,
                 player_origin.y - 50.
             );
-            gizmos.circle_2d(foot, 10., Color::GREEN);
 
+            gizmos.circle_2d(foot, 10., Color::GREEN);
 
             /* flip sprite based on other's position */
             if *pressed_direction == Direction::Up {
                 sprite.flip_x = to_other.x < 0.;
             }
-
 
             /* if swing-action is used up, don't process anymore */
             if o_s.used_up {continue}
@@ -866,14 +828,25 @@ fn apply_swing(
 }
 
 
-
-fn reset_updated_flags(
-    mut sensors_q: Query<&mut BallSensor>
+fn take_damage(
+    q_player: Query<Entity, Added<HitByBall>>,
+    mut log: EventWriter<LogEvent>,
+    mut commands: Commands
 ) {
-    for mut b in sensors_q.iter_mut() {
-        b.hit_on_last_update = false;
+    for e in q_player.iter() {
+        log.send(
+            LogEvent(format!("you took damage\n"))
+        );
+        
+        commands.entity(e).remove::<HitByBall>();
     }
 }
+
+
+// -------------------------------
+// workers
+// ---
+
 
 fn update_log_system(
     mut log: EventReader<LogEvent>,
@@ -904,11 +877,21 @@ fn update_log_system(
     }
 }
 
-/* so collider without rigidbody is available in the system,,,
-    but it's not comin gup in the ocllisions list
+
+/*
+    pre-update:
+        update sensors/reactive components
+    
+    update:
+        do stuff
+
+    post-update:
+        reset reactive components
+
+    
+    you have the option to use change detection
 
  */
-
 
 fn update_sensors(
     mut collision_events: EventReader<CollisionEvent>,
@@ -916,12 +899,13 @@ fn update_sensors(
     // mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
     // player_sensors: Query<(&PlayerSensor, Entity)>,
     //
-
     ground: Query<&RigidBody>,
-    balls: Query<&FromPlayer>,
+    balls: Query<(Entity, &FromPlayer)>,
     players: Query<&InputHolder>,
+
     mut log: EventWriter<LogEvent>,
- ) {
+    mut commands: Commands
+) {
 
     for collision_event in collision_events.iter() {
         if let CollisionEvent::Started(e_1, e_2, _flags) = *collision_event {
@@ -929,13 +913,34 @@ fn update_sensors(
 
                 // if rigidbody is static/fixed then...
                 if let Ok(RigidBody::Fixed) = ground.get(entity) {
+
+                    // log.send(
+                    //     LogEvent(format!("{:?} {:?}\n", entity, balls.get(other_entity)))
+                    // );
+
+                    // println!("{:?} {:?}", entity, balls.get(other_entity));
+
+
+                    if balls.get(other_entity).is_ok() {
+                        commands.entity(other_entity).insert(HasTouchedGround);
+                    }
+                }
+
+                if balls.get(entity).is_ok() && players.get(other_entity).is_ok() {
                     log.send(
-                        LogEvent(format!("{:?} {:?} {:?}\n", entity, balls.get(other_entity), players.get(other_entity)))
+                        LogEvent(format!("ball {:?} and player\n", entity))
                     );
+
+                    commands.entity(other_entity).insert(HitByBall);
                 }
             }
         }
     }
+
+                // // check if sensor
+                // if flags == CollisionEventFlags::SENSOR {
+                //     // check if e1 is playersensor and e2 is player
+                // }
 
 
     // for collision_event in collision_events.iter() {
@@ -959,4 +964,22 @@ fn update_sensors(
     //         }
     //     }
     // }
+}
+
+
+fn reset_updated_flags(
+    mut sensors_q: Query<&mut BallSensor>
+) {
+    for mut b in sensors_q.iter_mut() {
+        b.hit_on_last_update = false;
+    }
+}
+
+
+fn update_balls_visuals(
+    mut q_balls: Query<&mut Visibility, Added<HasTouchedGround>>
+) {
+    for mut vis in q_balls.iter_mut() {
+        *vis = Visibility::Hidden;
+    }
 }

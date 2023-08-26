@@ -21,8 +21,8 @@ use bevy::{
 };
 
 use bevy_rapier2d::prelude::*;
-use super::components::*;
 
+use super::components::*;
 use crate::GRAVITY_SCALE;
 
 
@@ -81,9 +81,10 @@ impl Default for PlayerBundle {
             rigid_body: RigidBody::KinematicVelocityBased,
             character_controller: KinematicCharacterController {
                 // not working
-                apply_impulse_to_dynamic_bodies: true,
-                // unless?
-                // offset: CharacterLength::Absolute(0.1),
+                // apply_impulse_to_dynamic_bodies: true,
+
+                // exlude sensors?
+                // filter_flags: 
                 ..default()
             },
             collider: Collider::capsule_y(30., 20.),
@@ -123,6 +124,11 @@ pub struct BallBundle {
 	pub transform: Transform,
 	pub global_transform: GlobalTransform,
 
+    /* sprite bundle */
+    pub sprite: Sprite,
+    pub texture: Handle<Image>,
+    pub visibility: Visibility,
+    pub computed_visibility: ComputedVisibility
 }
 
 
@@ -131,7 +137,7 @@ impl Default for BallBundle {
 		Self {
 		    rigid_body: RigidBody::Dynamic,
 			collider: Collider::ball(20.),
-            collision_groups: CollisionGroups::new(Group::GROUP_2, Group::ALL ^ Group::GROUP_3),
+            collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL),
 			gravity_scale: GravityScale(GRAVITY_SCALE),
 			mass_props: default(),
             restitution: Restitution::coefficient(0.7),
@@ -140,6 +146,17 @@ impl Default for BallBundle {
 			velocity: default(),
 			transform: default(),
 			global_transform: default(),
+
+            // sprite: Sprite {
+            //     color: Color::rgba(0.5, 0.5, 0.5, 1.0), 
+            //     custom_size: Some(Vec2::new(100., 100.)), 
+            //     ..default()
+            // },
+
+            sprite: default(),
+            texture: default(),
+            visibility: default(),
+            computed_visibility: default()
 		}
 	}
 }
@@ -158,7 +175,7 @@ pub struct PlayerSensorBundle {
 impl Default for PlayerSensorBundle {
     fn default() -> Self {
         Self {
-            collision_groups: CollisionGroups::new(Group::GROUP_3, Group::ALL ^ Group::GROUP_2),
+            collision_groups: CollisionGroups::new(Group::GROUP_1, Group::ALL),
             player_sensor: PlayerSensor { despawn_on_enter: false },
             sensor: default(),
             collider: Collider::ball(50.),

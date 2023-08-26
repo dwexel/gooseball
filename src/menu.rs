@@ -4,35 +4,19 @@ idea:
 a system that takes a component as a generic
 and "shows" or "hides" all entities with that component
 
-
  */
-
 
 use bevy::prelude::*;
 use crate::AppState;
-
 use super::components::*;
 
 
-
-
-
 pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>) {
-	// grab resources
-	// hmm
-	// todo
-
-	
 	let _fonts: Vec<HandleUntyped> = asset_server.load_folder("fonts/").unwrap();
 
-
-
-
 	// why is it on the right?
-
 	// also , get_handle don't panic but it doens't warn either
 	let text_style = TextStyle {font_size: 20., font: asset_server.get_handle("fonts/FiraMono-Regular.ttf"), color: Color::WHITE};
-	
 	
 	commands.spawn((
 		MenuMarker,
@@ -59,8 +43,6 @@ pub fn setup_menu_system(mut commands: Commands, asset_server: Res<AssetServer>)
 		parent.spawn((
 			TextBundle { text: Text::from_section("cam", text_style.clone()), ..default()},
 		));
-
-
 	});
 }
 
@@ -101,12 +83,7 @@ pub fn run_menu_system(
 		}
 	}
 
-	// get returns a borrow
-	// safe 
 	if let Some(e) = ents.get(*menu_pointer) {
-
-		// get mutable ref to text
-		// bevy approved way
 		let (_, mut t) = menu_query.get_mut(*e).unwrap();
 
 		t.sections.push(TextSection { 
@@ -149,6 +126,7 @@ pub fn run_menu_system(
 				},
 				4 => {
 					settings_camera_system.0 = !settings_camera_system.0;
+					next.set(AppState::InGame);
 				}
 
 				_ => {}
