@@ -13,6 +13,7 @@ pub fn added_system(
 			TransformBundle::from(Transform::from_xyz(b.x, b.y, 0.)),
 			Collider::cuboid(b.w, b.h),
 			RigidBody::Fixed,
+			SaveOnReset
 		));
 	}
 

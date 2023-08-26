@@ -35,35 +35,6 @@ use super::{
 	DROP_HEIGHT,
 };
 
-// pub fn ball_thrower(
-// 	q_player: Query<&Transform, With<Player1Marker>>,
-// 	options: Res<PlayerInfo>,
-// 	mut timer: ResMut<ThrowTimer>,
-// 	time: Res<Time>,
-// 	mut commands: Commands
-// ) {
-// 	if options.balls {return}
-
-// 	if timer.0.tick(time.delta()).just_finished() {
-// 		if let Ok(transform) = q_player.get_single() {
-// 			let player = transform.translation.xy();
-// 			let origin = Vec2::new(0., 0.);
-// 			let o2p = player - origin;
-
-// 			commands.spawn(BallBundle {
-// 				velocity: Velocity {linvel: THROW_VEL * o2p.normalize(), ..default()},
-// 				transform: Transform::from_xyz(
-// 					origin.x, origin.y, 0.
-// 				),
-// 				restitution: Restitution::coefficient(0.7),
-// 				..default()
-// 			})
-// 			.insert(FromPlayer(Entity::PLACEHOLDER))
-// 			.insert(TimeAdded(time.elapsed_seconds()));
-// 		}
-// 	}
-// }
-
 
 pub fn drop_ball(
 	time: Res<Time>,
@@ -83,22 +54,14 @@ pub fn drop_ball(
 				transform: Transform::from_xyz(t.x, t.y + DROP_HEIGHT, 0.0),
 				sprite: Sprite {
 					color: Color::rgba(0.0, 0.0, 0.5, 1.0),
-					// custom_size: Some(Vec2::splat(50.)),
+					custom_size: Some(Vec2::splat(50.)),
 					..default()
 				},
-				texture: (|| {
-					let h = asset_server.get_handle("icon.png");
-					println!("{h:?}");
-					h
-				})(),
-
+				texture: asset_server.get_handle("icon.png"),
 				..default()
 			})
-			.insert(FromPlayer(e))
+			.insert(BallLast::None)
 			.insert(TimeAdded(time.elapsed_seconds()));
-
-			// otherwise it'll spawn abunch???????
-			// break;
 		}
 	}
 }
@@ -108,6 +71,8 @@ pub fn update_pie(
 	time: Res<Time>,
 	mut q_time: Query<&mut DropOnMeRate>,
 	q: Query<&Handle<PieMaterial>>,
+
+	// temporary
 	mut meshes: ResMut<Assets<PieMaterial>>
 ) {
 	let mut timer = q_time.single_mut();
@@ -136,3 +101,36 @@ pub fn manage_balls(
 		commands.entity(ball_times[0].0).despawn();
 	}
 }
+
+/*
+
+
+pub fn ball_thrower(
+	q_player: Query<&Transform, With<Player1Marker>>,
+	options: Res<PlayerInfo>,
+	mut timer: ResMut<ThrowTimer>,
+	time: Res<Time>,
+	mut commands: Commands
+) {
+	if options.balls {return}
+
+	if timer.0.tick(time.delta()).just_finished() {
+		if let Ok(transform) = q_player.get_single() {
+			let player = transform.translation.xy();
+			let origin = Vec2::new(0., 0.);
+			let o2p = player - origin;
+
+			commands.spawn(BallBundle {
+				velocity: Velocity {linvel: THROW_VEL * o2p.normalize(), ..default()},
+				transform: Transform::from_xyz(
+					origin.x, origin.y, 0.
+				),
+				restitution: Restitution::coefficient(0.7),
+				..default()
+			})
+			.insert(FromPlayer(Entity::PLACEHOLDER))
+			.insert(TimeAdded(time.elapsed_seconds()));
+		}
+	}
+}
+ */

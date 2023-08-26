@@ -98,12 +98,13 @@ when they're generated != when they're read
 
 
 
+update ball color to the color of the player... when it's active (dangerous)
+
+
+
 
 
  */
-
-
-
 
 
 use bevy::{
@@ -180,7 +181,7 @@ fn main() {
             menu::setup_menu_system
         ))
         
-        .add_systems(PreUpdate, update_sensors)
+        .add_systems(PreUpdate, read_collisions)
         
         .configure_sets(Update, (CollectInput, ApplyInput).chain())
 
@@ -216,17 +217,19 @@ fn main() {
                 )
                 .run_if(resource_exists_and_equals(Settings_balls(true))),
 
-                modify_character_controller_slopes,
 
                 /*
                     this system despawns balls!
                 */
                 balls::manage_balls,
 
+                // ui
                 pause_menu_button_system,
                 update_log_system,             
-                update_balls_visuals,
 
+                // reactive
+                modify_character_controller_slopes,
+                update_balls_visuals,
                 take_damage
 
             )
@@ -271,12 +274,8 @@ fn main() {
             .run_if(in_state(AppState::PauseMenu))
         )
 
-        .add_systems(OnEnter(AppState::Reset),
-            (
-                reset_system, 
-                spawn_players_system
-            )
-            .chain()
+        .add_systems(OnEnter(AppState::Reset), 
+            (reset_system, spawn_players_system).chain()
         )
 
         // types that are deserialized
@@ -284,12 +283,10 @@ fn main() {
         .register_type::<BuilderLine>()
         .register_type::<Vec2>()
         .register_type::<Vec<Vec2>>()
-
         .register_type::<(f32, f32)>()
         .register_type::<Vec<(f32, f32)>>()
 
         .add_state::<AppState>()
-
 
         .insert_resource(LogText(Vec::new()))
         .insert_resource(Settings_players(2))
@@ -332,11 +329,19 @@ const GRAVITY_SCALE: f32 = 5.;
 
 
 mod shapes {
+    // todo: change the "radius param to be so 1.0 will be perfectly sized to the given mesh"
+
+    // maybe I wan to wrap shapes with "builder" componennts
+
+    // think about: what if the percentage component is added after the shape comp.
+
+
     // re-use previous bevy?
-    use bevy::prelude::*;
+    use bevy::{prelude::*, transform};
     use bevy::render::render_resource::AsBindGroup;
     use bevy::reflect::{TypeUuid, TypePath};
-    use bevy::sprite::{Material2d, Material2dPlugin};
+    use bevy::sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle};
+
 
     // This is the struct that will be passed to your shader
     #[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
@@ -358,7 +363,113 @@ mod shapes {
 
     impl Material2d for PieMaterial {
         fn fragment_shader() -> bevy::render::render_resource::ShaderRef {
-            "custom_material.wgsl".into()
+            "shapes/pie_mat.wgsl".into()
+        }
+    }
+
+    #[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
+    #[uuid = "4470cf60-c6ab-400e-bf35-da98c1dfb26c"]
+    pub struct BarMaterial {
+        #[uniform(0)]
+        pub color: Color,
+        #[uniform(0)]
+        pub percentage: f32,
+        #[uniform(0)]
+        pub corner_radius: f32
+    }
+
+// left-to-right and right-to-left?
+
+    impl Material2d for BarMaterial {
+        fn fragment_shader() -> bevy::render::render_resource::ShaderRef {
+            "shapes/bar_mat.wgsl".into()
+        }
+    }
+
+    #[derive(Component)]
+    pub struct BarShape(pub f32, pub f32, pub Vec2, pub Color);
+
+    impl BarShape {
+        pub fn new(size: f32, corner_radius: f32, aspect: Vec2, color: Color) -> Self {
+            Self(size, corner_radius, aspect, color)
+        }
+    }
+
+
+    #[derive(Component)]
+    pub struct Percentage(pub f32);
+
+    // systems
+    // genericizeeeeeeee
+
+    // how to do rounded corners?
+        // well, if i'm doing that in code then it gives me a good reason to allow
+        // both setting the size of the quad mesh
+        // and the size of the shape in the shader
+
+    // have a generic shape that different types can convert into?
+
+
+    fn added_system(
+        mut commands: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<BarMaterial>>,
+
+        // get
+        q: Query<(Entity, &BarShape, Option<&Percentage>, Option<&Transform>), Added<BarShape>>
+    ) {
+
+        for (entity, shape, percentage, transform) in q.iter() {
+            let percentage = match percentage {
+                Some(p) => p.0,
+                None => 1.0
+            };
+
+            let transform =  match transform {
+                // copied or cloned?
+                Some(t) => *t,
+                None => Transform::default()
+            };
+
+            // try to shrink y?
+
+            commands.entity(entity).insert(
+
+                MaterialMesh2dBundle {
+                    mesh: 
+                        meshes.add(
+                            shape::Quad::new(Vec2::splat(shape.0)).into()
+                        ).into(),
+
+                    material: materials.add(BarMaterial {
+                        color: shape.3,
+                        percentage: percentage,
+                        corner_radius: shape.1
+                    }),
+
+                    transform: transform,
+                    ..default()
+                }
+            );
+        }
+    }
+
+    fn changed_system(
+        mut meshes: ResMut<Assets<BarMaterial>>,
+        q: Query<(&Handle<BarMaterial>, &Percentage)>
+    ) {
+        for (material_handle, percentage) in q.iter() {
+            if let Some(mat) = meshes.get_mut(material_handle) {
+                mat.percentage = percentage.0;	
+            }
+        }
+    }
+
+    fn removed_system(
+        mut removed: RemovedComponents<BarShape>
+    ) {
+        for entity in removed.iter() {
+
         }
     }
 
@@ -366,22 +477,35 @@ mod shapes {
 
     impl Plugin for ShapePlugin {
         fn build(&self, app: &mut App) {
-            app.add_plugins(Material2dPlugin::<PieMaterial>::default());
+            app
+                .add_plugins(Material2dPlugin::<PieMaterial>::default())
+                .add_plugins(Material2dPlugin::<BarMaterial>::default())
+                .add_systems(PostUpdate, (
+                    added_system,
+                    changed_system
+                ))
+
+                ;
         }
     }
 }
 
 use shapes::{
     ShapePlugin,
-    PieMaterial,
+    BarShape,
+    Percentage
 };
-
-
 
 
 
 // ------------------ setup
 
+    // damn
+    // commands.spawn(PlayerSensorBundle {
+    //     player_sensor: PlayerSensor { despawn_on_enter: true },
+    //     transform: Transform::from_xyz(-250., 20., 0.),
+    //     ..default()
+    // });
 
 
 
@@ -389,9 +513,6 @@ use shapes::{
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<PieMaterial>>,
-
 ) {
     commands.spawn(DynamicSceneBundle {
         scene: asset_server.load(SCENE_FILE_PATH), ..default()
@@ -407,26 +528,7 @@ fn setup(
         LogTextDisplayer
     ));
 
-
-    commands.spawn(PlayerSensorBundle {
-        player_sensor: PlayerSensor { despawn_on_enter: true },
-        transform: Transform::from_xyz(-250., 20., 0.),
-        ..default()
-    });
-
-    
-    let mat_handle = materials.add(PieMaterial {
-        color: Color::PURPLE,
-        ..default()
-    });
-
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: meshes.add(shape::Quad::new(Vec2::new(50., 50.)).into()).into(),
-        material: mat_handle.clone(),
-        transform: Transform::from_translation(Vec3::new(-150., 0., 0.)),
-        ..default()
-    });
-
+    /* load assets needed elsewhere */
     commands.spawn(
         DropOnMeRate(Timer::from_seconds(3., TimerMode::Repeating))
     );
@@ -435,8 +537,8 @@ fn setup(
     commands.insert_resource(BallTexture(
         asset_server.load("icon.png")
     ));
-
 }
+
 
 
 
@@ -450,14 +552,18 @@ fn spawn_players_system(
     /*
         goose png: each tile is is 237 by 201
         5 tiles
-
-                default anchor is -0.19, -0.25
-
+            default anchor is -0.19, -0.25
      */
 
     let texture_handle = asset_server.load("combined.png");
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(237., 201.), 5, 1, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
+
+
+    // yea
+    // add asset
+    let player_1_id_color = Color::PURPLE;
+
 
     commands.spawn(
         bundles::PlayerBundle {
@@ -471,9 +577,25 @@ fn spawn_players_system(
             ..default()
         }
     )
-    .insert(AnimationState::Normal)
+    .insert(AnimationState::Normal) // normal is unused right?
     .insert(InputMapWASD)
-    .insert(Player1Marker);
+    .insert(Player1Marker)
+    .with_children(|parent| {
+
+        // could separate color
+        parent.spawn((
+            Transform::from_xyz(0., -100., 0.),
+            BarShape::new(
+                100., 
+                0.2,
+                Vec2::new(1.0, 0.5),
+                Color::PURPLE
+            ),
+            Percentage(1.0)
+        ));
+
+    });
+
 
 
     if settings.0 != 2 {return}
@@ -493,19 +615,18 @@ fn spawn_players_system(
     .insert(AnimationState::Normal)
     .insert(InputMapArrow)
     .insert(Player2Marker);
-
 }
 
 
 /* query all RigidBodies and despawn them, then set gamestate back to in-game */
 fn reset_system (
     mut commands: Commands, 
-    bodies: Query<Entity, With<RigidBody>>,
+    bodies: Query<Entity, (With<RigidBody>, Without<SaveOnReset>)>,
     mut next: ResMut<NextState<AppState>>,
     mut log_q: Query<&mut Text, With<LogTextDisplayer>>
 ) {
     for entity in bodies.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 
     next.set(AppState::InGame);
@@ -723,7 +844,7 @@ fn modify_character_controller_slopes(
         &mut CharacterVelocity,
    )>,
 
-   mut q_balls: Query<&mut Velocity, With<FromPlayer>>
+   mut q_balls: Query<&mut Velocity, With<BallLast>>
 ) {
     /* apply translation back to velocity */
     
@@ -757,7 +878,7 @@ fn apply_swing(
         &Direction,
         &mut TextureAtlasSprite
     )>,
-    mut balls_q: Query<(&Transform, &mut Velocity, &mut FromPlayer)>,
+    mut balls_q: Query<(&Transform, &mut Velocity, &mut BallLast)>,
     mut gizmos: Gizmos,
 ) {
     let p1 = p1_q.single();
@@ -811,7 +932,11 @@ fn apply_swing(
                 if rect.contains(
                     ball_transform.translation.xy()
                 ) {
-                    from_player.0 = e_player;
+                    // from_player.0 = e_player;
+
+                    /* update the ball */
+                    *from_player = BallLast::Player(e_player);
+                    
 
                     /* don't remove the component but set it so it can't be used again */
                     o_s.used_up = true;
@@ -829,15 +954,24 @@ fn apply_swing(
 
 
 fn take_damage(
-    q_player: Query<Entity, Added<HitByBall>>,
+    q_player: Query<(Entity, &Children), Added<HitByBall>>,
+    mut q_children: Query<&mut Percentage, With<Parent>>,
+    //
     mut log: EventWriter<LogEvent>,
     mut commands: Commands
 ) {
-    for e in q_player.iter() {
+    for (e, children) in q_player.iter() {
         log.send(
             LogEvent(format!("you took damage\n"))
         );
-        
+
+        /* update child entity (ui) */
+        for &child in children.iter() {
+            if let Ok(mut p) = q_children.get_mut(child) {
+                p.0 -= 0.1;
+            }
+        }
+
         commands.entity(e).remove::<HitByBall>();
     }
 }
@@ -891,18 +1025,24 @@ fn update_log_system(
     
     you have the option to use change detection
 
+
+    sometimes BallLast is set in pre-update
+    sometimes update
+    ???
+
+
  */
 
-fn update_sensors(
+
+fn read_collisions(
     mut collision_events: EventReader<CollisionEvent>,
     //
     // mut ball_sensors: Query<(&mut BallSensor, &Transform)>,
     // player_sensors: Query<(&PlayerSensor, Entity)>,
     //
     ground: Query<&RigidBody>,
-    balls: Query<(Entity, &FromPlayer)>,
+    mut balls: Query<(Entity, &mut BallLast)>,
     players: Query<&InputHolder>,
-
     mut log: EventWriter<LogEvent>,
     mut commands: Commands
 ) {
@@ -912,26 +1052,30 @@ fn update_sensors(
             for (entity, other_entity) in [(e_1, e_2), (e_2, e_1)] {
 
                 // if rigidbody is static/fixed then...
+                // it's ground
                 if let Ok(RigidBody::Fixed) = ground.get(entity) {
-
-                    // log.send(
-                    //     LogEvent(format!("{:?} {:?}\n", entity, balls.get(other_entity)))
-                    // );
-
-                    // println!("{:?} {:?}", entity, balls.get(other_entity));
-
-
-                    if balls.get(other_entity).is_ok() {
-                        commands.entity(other_entity).insert(HasTouchedGround);
+                    if let Ok((_, mut last)) = balls.get_mut(other_entity) {
+                        *last = BallLast::Ground;
+                        continue;
                     }
                 }
 
-                if balls.get(entity).is_ok() && players.get(other_entity).is_ok() {
-                    log.send(
-                        LogEvent(format!("ball {:?} and player\n", entity))
-                    );
+                // player and ball collision
+                if players.get(entity).is_ok() {
+                    if let Ok((_, mut last)) = balls.get_mut(other_entity) {
+                        log.send(
+                            LogEvent(format!("player: {:?} ball last hit: {:?}\n", entity, last))
+                        );
 
-                    commands.entity(other_entity).insert(HitByBall);
+                        match *last {
+                            BallLast::None | BallLast::Player(_) => {
+                                commands.entity(other_entity).insert(HitByBall);
+                            }
+                            _ => {}
+                        };
+
+                        continue;
+                    }
                 }
             }
         }
@@ -977,9 +1121,11 @@ fn reset_updated_flags(
 
 
 fn update_balls_visuals(
-    mut q_balls: Query<&mut Visibility, Added<HasTouchedGround>>
+    mut q_balls: Query<(&mut Visibility, &BallLast), Changed<BallLast>>
 ) {
-    for mut vis in q_balls.iter_mut() {
-        *vis = Visibility::Hidden;
+    for (mut vis, last) in q_balls.iter_mut() {
+        if *last == BallLast::Ground {
+            *vis = Visibility::Hidden;
+        }
     }
 }

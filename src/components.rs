@@ -90,8 +90,17 @@ pub struct DropOnMeRate(pub Timer);
 pub struct TimeAdded(pub f32);
 
 // set to the last player that hit the ball
-#[derive(Component, Debug)]
-pub struct FromPlayer(pub Entity);
+// #[derive(Component, Debug)]
+// pub struct FromPlayer(pub Entity);
+
+#[derive(Component, Debug, PartialEq)]
+pub enum BallLast {
+    None,
+    Ground,
+    Player(Entity)
+}
+
+
 
 
 #[derive(Component)]
@@ -100,6 +109,10 @@ pub struct HasTouchedGround;
 
 #[derive(Component)]
 pub struct HitByBall;
+
+#[derive(Component)]
+pub struct SaveOnReset;
+
 
 
 //-----------------------------------------------------
